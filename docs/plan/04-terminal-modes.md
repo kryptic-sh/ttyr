@@ -1,18 +1,18 @@
 # 04 — Terminal modes
 
-- **Raw mode** on and off (termios on Unix; Windows in 07), restoring exactly
-  the attributes found.
-- **Size**: columns and rows, and pixel size where the terminal reports it
-  (`TIOCGWINSZ`'s pixel fields, `CSI 14 t`).
+**In progress.** Landed: raw mode and size (`ttyr::terminal`: `size`,
+`window_size`, `enable_raw_mode`, `disable_raw_mode`, `is_raw_mode_enabled`,
+crossterm's names; Unix; Windows in 07). Still to do:
+
 - **Modes a program turns on**, each with its off: the alternate screen, mouse
   capture (1000/1002/1003 with 1006, optional 1016), bracketed paste, focus
   reporting, kitty keyboard flags (push `CSI > f u`, pop `CSI < n u`, set
   `CSI = f ; mode u`), xterm modifyOtherKeys (`CSI > 4 ; 2 m` / `CSI > 4 m`),
   the colour-scheme reports (2031), synchronized output (2026).
 - **Capability queries without blocking**: helpers that write the query (kitty
-  `CSI ? u` followed by DA1, DECRQM, XTVERSION, colour queries); the replies
-  come back through 02's report events, and a small helper can collect them with
-  the caller's timeout.
+  `CSI ? u` followed by DA1, the text area's pixel size `CSI 14 t`, DECRQM,
+  XTVERSION, colour queries); the replies come back through 02's report events,
+  and a small helper can collect them with the caller's timeout.
 - **Modes switch at any time**, not only at startup: hjkl's `:set mouse` turns
   mouse capture on and off while running, and tmxr's client changes kitty flags
   as focus moves (its plan 18). The guard tracks each mode's current state.

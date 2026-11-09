@@ -32,4 +32,9 @@ All notable changes to this project are documented here. The format follows
   surface as errors. An optional escape timeout holds a lone `ESC` for the rest
   of a sequence. Only one reader can be open per process at a time, and it reads
   only when asked to.
+- `ttyr::terminal` (Unix): `size` and `window_size` (cells and pixels) of the
+  controlling terminal, and `enable_raw_mode`, `disable_raw_mode` and
+  `is_raw_mode_enabled`, crossterm's names. Raw mode keeps the attributes from
+  before and puts exactly those back; turning it on or off twice does nothing
+  the second time.
 - A `serde` feature deriving `Serialize` and `Deserialize` on every event type.

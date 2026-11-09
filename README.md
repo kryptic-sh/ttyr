@@ -7,8 +7,9 @@ by [tmxr](https://github.com/kryptic-sh/tmxr),
 apps.
 
 **Status: in progress.** The event types and the byte decoder (`ttyr::event`)
-and reading a Unix tty (`ttyr::reader`) are implemented; raw mode, output, the
-ratatui backend and Windows are planned in [docs/plan](docs/plan/00-index.md).
+reading a Unix tty (`ttyr::reader`), and its size and raw mode
+(`ttyr::terminal`) are implemented; the terminal's modes, output, the ratatui
+backend and Windows are planned in [docs/plan](docs/plan/00-index.md).
 
 ## License
 

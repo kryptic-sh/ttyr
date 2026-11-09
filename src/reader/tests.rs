@@ -1,20 +1,15 @@
-//! The reader end to end over a pty: the test writes to the terminal side
-//! (the master), as a terminal emulator would, and the reader reads the
-//! program side.
+//! The reader end to end over a pty.
 
-use std::fs::File;
 use std::io::Write;
-use std::os::fd::OwnedFd;
 use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use rustix::fs::{Mode, OFlags};
-use rustix::pty::{OpenptFlags, grantpt, openpt, ptsname, unlockpt};
-use rustix::termios::{OptionalActions, Winsize, tcgetattr, tcsetattr, tcsetwinsize};
+use rustix::termios::{Winsize, tcsetwinsize};
 
 use super::Reader;
 use crate::event::{Event, KeyCode, KeyEncoding, KeyEvent, KeyModifiers};
+use crate::test_pty::raw_pty as pty;
 
 /// The reader is one per process and `SIGWINCH` goes to the whole process,
 /// so the tests take turns.
@@ -25,24 +20,6 @@ const LONG: Duration = Duration::from_secs(5);
 
 fn serial() -> MutexGuard<'static, ()> {
     SERIAL.lock().unwrap_or_else(PoisonError::into_inner)
-}
-
-/// A pty in raw mode: the terminal's side, and the program's.
-fn pty() -> (File, OwnedFd) {
-    let master = openpt(OpenptFlags::RDWR | OpenptFlags::NOCTTY).unwrap();
-    grantpt(&master).unwrap();
-    unlockpt(&master).unwrap();
-    let name = ptsname(&master, Vec::new()).unwrap();
-    let slave = rustix::fs::open(
-        name.as_c_str(),
-        OFlags::RDWR | OFlags::NOCTTY | OFlags::CLOEXEC,
-        Mode::empty(),
-    )
-    .unwrap();
-    let mut termios = tcgetattr(&slave).unwrap();
-    termios.make_raw();
-    tcsetattr(&slave, OptionalActions::Now, &termios).unwrap();
-    (File::from(master), slave)
 }
 
 fn key(code: KeyCode) -> Event {

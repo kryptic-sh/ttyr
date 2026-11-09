@@ -14,7 +14,6 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use rustix::event::{FdSetElement, FdSetIter, Timespec, fd_set_insert, fd_set_num_elements};
-use rustix::fs::{Mode, OFlags};
 use rustix::io::Errno;
 use signal_hook::SigId;
 use signal_hook::consts::SIGWINCH;
@@ -70,12 +69,7 @@ impl Reader {
     /// returns is always delivered: a caller that has the size from before
     /// can compare it with [`size`](Self::size) once, and miss nothing.
     pub fn open() -> io::Result<Self> {
-        let tty = rustix::fs::open(
-            "/dev/tty",
-            OFlags::RDONLY | OFlags::NOCTTY | OFlags::CLOEXEC,
-            Mode::empty(),
-        )?;
-        Self::from_fd(tty)
+        Self::from_fd(crate::terminal::open_tty()?)
     }
 
     /// A reader of `tty`, which should be a terminal: [`Event::Resize`] and
@@ -122,8 +116,8 @@ impl Reader {
 
     /// The terminal's size, columns then rows.
     pub fn size(&self) -> io::Result<(u16, u16)> {
-        let size = rustix::termios::tcgetwinsize(&self.tty)?;
-        Ok((size.ws_col, size.ws_row))
+        let size = crate::terminal::window_size_of(&self.tty)?;
+        Ok((size.columns, size.rows))
     }
 
     /// Whether an event is ready to [`read`](Self::read), waiting up to

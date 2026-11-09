@@ -2,9 +2,9 @@
 
 What is not done yet, and why.
 
-- **Phases 04 to 08 are not implemented.** `ttyr::event` (the event types and
-  the `Decoder`) and `ttyr::reader` (Unix) are all there is; the rest is planned
-  in `docs/plan/`.
+- **Phases 04 to 08 are not finished.** `ttyr::event` (the event types and the
+  `Decoder`), `ttyr::reader` and `ttyr::terminal`'s size and raw mode (Unix) are
+  all there is; the rest is planned in `docs/plan/`.
 - **The crate name is not reserved on crates.io.** `ttyr` was free on
   2026-11-09; it is taken when the first version is published by the tag
   pipeline in `.github/workflows/ci.yml`.
