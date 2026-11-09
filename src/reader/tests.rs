@@ -165,13 +165,18 @@ fn a_waker_wakes_a_wait_from_another_thread() {
     let waking = thread::spawn(move || {
         thread::sleep(Duration::from_millis(50));
         waker.wake().unwrap();
-        waker.wake().unwrap();
+        waker
     });
     let start = Instant::now();
     assert_eq!(reader.read().unwrap(), Event::Wake);
     assert!(start.elapsed() < LONG);
-    waking.join().unwrap();
-    // The two wakes were one event.
+    let waker = waking.join().unwrap();
+    assert!(!reader.poll(Duration::ZERO).unwrap());
+    // Wakes before the reader next waits are one event.
+    waker.wake().unwrap();
+    waker.wake().unwrap();
+    assert!(reader.poll(Duration::ZERO).unwrap());
+    assert_eq!(reader.read().unwrap(), Event::Wake);
     assert!(!reader.poll(Duration::ZERO).unwrap());
 }
 

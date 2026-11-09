@@ -4,7 +4,8 @@ use std::os::windows::io::AsHandle;
 
 use windows_sys::Win32::System::Console::{
     ENABLE_ECHO_INPUT, ENABLE_LINE_INPUT, ENABLE_MOUSE_INPUT, ENABLE_PROCESSED_INPUT,
-    ENABLE_VIRTUAL_TERMINAL_INPUT, ENABLE_VIRTUAL_TERMINAL_PROCESSING, ENABLE_WINDOW_INPUT,
+    ENABLE_QUICK_EDIT_MODE, ENABLE_VIRTUAL_TERMINAL_INPUT, ENABLE_VIRTUAL_TERMINAL_PROCESSING,
+    ENABLE_WINDOW_INPUT,
 };
 
 use super::{Console, console_mode, disable_raw_mode, enable_raw_mode, is_raw_mode_enabled, size};
@@ -66,6 +67,8 @@ fn the_guard_sets_the_console_modes_a_mode_needs() {
     disable(&mut out, Mode::VirtualTerminalInput).unwrap();
     assert_eq!(modes().0 & ENABLE_VIRTUAL_TERMINAL_INPUT, 0);
     restore(&mut out).unwrap();
-    let after = modes().0;
-    assert_eq!(after & ENABLE_MOUSE_INPUT, before & ENABLE_MOUSE_INPUT);
+    // The console's own bits are back, whatever they were (CI's console has
+    // mouse input on to start with).
+    let mask = ENABLE_MOUSE_INPUT | ENABLE_QUICK_EDIT_MODE | ENABLE_VIRTUAL_TERMINAL_INPUT;
+    assert_eq!(modes().0 & mask, before & mask);
 }

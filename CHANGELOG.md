@@ -102,7 +102,8 @@ All notable changes to this project are documented here. The format follows
   - With VT input on, the bytes the terminal sends are decoded as on Unix.
   - `terminal::size`, `window_size`, `enable_raw_mode` and `disable_raw_mode`
     work through the console API. Raw mode also turns on VT output processing.
-  - The guard sets the console's input modes a mode needs. There are new modes:
+  - The guard sets the console's input modes a mode needs, and turning the mode
+    off puts back the bits the console had before. There are new modes:
     `Mode::Win32Input` (`CSI ? 9001 h`, with the commands
     `EnableWin32InputMode`/`DisableWin32InputMode`), and
     `Mode::VirtualTerminalInput`, Windows only.

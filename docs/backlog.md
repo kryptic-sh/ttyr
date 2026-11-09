@@ -87,9 +87,6 @@ What is not done yet, and why.
   console's internal. Focus reports come with VT input and mode 1004.
 - **`window_size` has no pixels on Windows**: the console does not report them
   (`width` and `height` are 0).
-- **Quick Edit stays off after `Mode::Mouse` is disabled** until raw mode
-  restores the console's original input mode.
-
 - **A modifier or lock key's own record is dropped** (`ConsoleKeys::key`):
   Shift, Ctrl, Alt, the Windows keys and the locks pressed alone are no event,
   as in crossterm, where kitty reports them with flag 8. A consumer that wants

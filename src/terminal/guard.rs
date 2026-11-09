@@ -195,12 +195,11 @@ pub fn restore(out: &mut impl Write) -> io::Result<()> {
 /// was on, to turn back on.
 fn release(out: &mut impl Write) -> io::Result<(Vec<Mode>, Option<RawTty>)> {
     let modes = mem::take(&mut *on());
-    // The console's modes go back with raw mode's; without it, each mode's.
+    // Each mode puts back the console's bits it changed, before raw mode
+    // puts back the rest.
     #[cfg(windows)]
-    if !is_raw_mode_enabled() {
-        for mode in modes.iter().rev() {
-            mode.set_console(false)?;
-        }
+    for mode in modes.iter().rev() {
+        mode.set_console(false)?;
     }
     let wrote = if modes.is_empty() && !is_raw_mode_enabled() {
         Ok(())

@@ -105,35 +105,73 @@ pub fn set_console_mode(handle: BorrowedHandle<'_>, mode: CONSOLE_MODE) -> io::R
     Ok(())
 }
 
-/// Turns `on` bits on and `off` bits off in the console input's mode.
-pub fn change_input_mode(on: CONSOLE_MODE, off: CONSOLE_MODE) -> io::Result<()> {
-    let input = open_console("CONIN$")?;
-    let mode = console_mode(input.as_handle())?;
-    set_console_mode(input.as_handle(), (mode | on) & !off)
+/// The input mode bits a mode changes, as the console had them before the
+/// mode turned them, to put back when it is turned off.
+struct Saved(Mutex<Option<CONSOLE_MODE>>);
+
+impl Saved {
+    const fn new() -> Self {
+        Self(Mutex::new(None))
+    }
+
+    /// On: saves the bits in `mask` as they are (once, while on), then
+    /// turns `on` bits on and `off` bits off. Off: puts the saved bits back.
+    /// Quick Edit and Insert mode change only with `ENABLE_EXTENDED_FLAGS`,
+    /// which is added whenever the bits put back or turned have them.
+    fn switch(
+        &self,
+        mask: CONSOLE_MODE,
+        on_bits: CONSOLE_MODE,
+        off_bits: CONSOLE_MODE,
+        on: bool,
+    ) -> io::Result<()> {
+        let input = open_console("CONIN$")?;
+        let mode = console_mode(input.as_handle())?;
+        let mut saved = self.0.lock().unwrap_or_else(PoisonError::into_inner);
+        let new = if on {
+            saved.get_or_insert(mode & mask);
+            (mode | on_bits) & !off_bits
+        } else {
+            match saved.take() {
+                Some(bits) => (mode & !mask) | bits,
+                None => return Ok(()),
+            }
+        };
+        let extended = if (mask | on_bits | off_bits) & ENABLE_QUICK_EDIT_MODE != 0 {
+            ENABLE_EXTENDED_FLAGS
+        } else {
+            0
+        };
+        set_console_mode(input.as_handle(), new | extended)
+    }
 }
 
-/// Mouse records from the console (`ENABLE_MOUSE_INPUT`), which takes Quick
-/// Edit's selection off the mouse; off, Quick Edit is not put back until
-/// raw mode is turned off.
+/// The mouse's bits from before `set_mouse_input(true)`.
+static MOUSE: Saved = Saved::new();
+/// The VT input bit from before `set_virtual_terminal_input(true)`.
+static VT_INPUT: Saved = Saved::new();
+
+/// Mouse records from the console (`ENABLE_MOUSE_INPUT`), with Quick Edit's
+/// selection taken off the mouse; off, both are as they were before.
 pub fn set_mouse_input(on: bool) -> io::Result<()> {
-    if on {
-        change_input_mode(
-            ENABLE_MOUSE_INPUT | ENABLE_EXTENDED_FLAGS,
-            ENABLE_QUICK_EDIT_MODE,
-        )
-    } else {
-        change_input_mode(0, ENABLE_MOUSE_INPUT)
-    }
+    MOUSE.switch(
+        ENABLE_MOUSE_INPUT | ENABLE_QUICK_EDIT_MODE,
+        ENABLE_MOUSE_INPUT,
+        ENABLE_QUICK_EDIT_MODE,
+        on,
+    )
 }
 
 /// VT input (`ENABLE_VIRTUAL_TERMINAL_INPUT`): the console hands over the
-/// bytes a terminal sends, which the decoder reads, in place of its records.
+/// bytes a terminal sends, which the decoder reads, in place of its records;
+/// off, as it was before.
 pub fn set_virtual_terminal_input(on: bool) -> io::Result<()> {
-    if on {
-        change_input_mode(ENABLE_VIRTUAL_TERMINAL_INPUT, 0)
-    } else {
-        change_input_mode(0, ENABLE_VIRTUAL_TERMINAL_INPUT)
-    }
+    VT_INPUT.switch(
+        ENABLE_VIRTUAL_TERMINAL_INPUT,
+        ENABLE_VIRTUAL_TERMINAL_INPUT,
+        0,
+        on,
+    )
 }
 
 /// The console's size, columns then rows.
