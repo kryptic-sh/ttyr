@@ -163,13 +163,13 @@ impl KeyEvent {
     }
 
     /// This event with Ctrl+\[, Ctrl+I and Ctrl+M mapped to Esc, Tab and
-    /// Enter, the keys a legacy terminal cannot tell them apart from, and,
-    /// from a legacy terminal, Ctrl+H to Backspace.
+    /// Enter, the keys a legacy terminal cannot tell them apart from.
     ///
     /// A mapping applies only when Ctrl is the only modifier held (Ctrl+Alt+\[
-    /// is not Esc), and only where the encoding made the keys distinct: under
-    /// the kitty protocol Ctrl+\[ is its own key, while a legacy terminal
-    /// already sends it as Esc and sends Backspace as Ctrl+H on some setups.
+    /// is not Esc). Only the kitty and xterm encodings make these keys
+    /// distinct; a legacy terminal already sends them as Esc, Tab and Enter,
+    /// so its events pass through unchanged. Ctrl+H is never Backspace here:
+    /// vim users bind it, and legacy terminals send Backspace as DEL already.
     /// The kind and state are kept, so a mapped release stays a release.
     ///
     /// For key handling that wants vim's aliases; an editor that binds
@@ -179,12 +179,10 @@ impl KeyEvent {
         if self.modifiers != KeyModifiers::CONTROL {
             return self;
         }
-        let legacy = self.encoding == KeyEncoding::Legacy;
         let key = match self.key {
-            KeyCode::Char('[') if !legacy => KeyCode::Esc,
-            KeyCode::Char('i' | 'I') if !legacy => KeyCode::Tab,
-            KeyCode::Char('m' | 'M') if !legacy => KeyCode::Enter,
-            KeyCode::Char('h') if legacy => KeyCode::Backspace,
+            KeyCode::Char('[') => KeyCode::Esc,
+            KeyCode::Char('i' | 'I') => KeyCode::Tab,
+            KeyCode::Char('m' | 'M') => KeyCode::Enter,
             _ => return self,
         };
         Self {
@@ -441,8 +439,6 @@ mod tests {
                 KeyCode::Char('['),
                 KeyModifiers::CONTROL | KeyModifiers::ALT,
             ),
-            // Under kitty, Ctrl+H is its own key.
-            ctrl('h'),
         ] {
             assert_eq!(event.clone().normalize_legacy(), event);
         }
@@ -464,14 +460,13 @@ mod tests {
     }
 
     #[test]
-    fn normalize_maps_ctrl_h_from_legacy_only() {
-        let legacy = ctrl('h')
-            .with_encoding(KeyEncoding::Legacy)
-            .normalize_legacy();
-        assert_eq!(legacy.key, KeyCode::Backspace);
-        assert_eq!(legacy.modifiers, KeyModifiers::NONE);
-        let xterm = ctrl('h').with_encoding(KeyEncoding::Xterm);
-        assert_eq!(xterm.clone().normalize_legacy(), xterm);
+    fn normalize_leaves_ctrl_h_alone_in_every_encoding() {
+        // Ctrl+H is a common vim binding (`<C-w>h`); a legacy terminal's ^H
+        // is Ctrl+H and stays it, its Backspace already arriving as DEL.
+        for encoding in [KeyEncoding::Legacy, KeyEncoding::Xterm, KeyEncoding::Kitty] {
+            let event = ctrl('h').with_encoding(encoding);
+            assert_eq!(event.clone().normalize_legacy(), event);
+        }
     }
 
     // ── logical_char ────────────────────────────────────────────────────────

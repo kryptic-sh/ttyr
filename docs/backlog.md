@@ -60,3 +60,16 @@ So the next surprise is cheap; each is a decoder choice, not a bug.
   same, as a legacy terminal cannot tell them apart.
 - **SGR-pixels mouse (1016) reads as cells**: the same form, so the caller who
   turned it on interprets `column` and `row` as pixels.
+
+## Considered and declined
+
+- **Ctrl+H as Backspace in `KeyEvent::normalize_legacy`.** Dropped on hjkl's
+  review (2026-11-09): hjkl runs the helper on every key, and its default keymap
+  binds Normal-mode `<C-h>` to focus-left (`nnoremap <C-h> <C-w>h` is one of the
+  commonest vim mappings), so a legacy terminal's ^H would stop navigating. The
+  decoder already reads DEL as Backspace and ^H as Ctrl+H. A consumer that wants
+  the alias gets a separate opt-in function, not a change to `normalize_legacy`.
+- **`#[non_exhaustive]` on `KeyCode` and `MouseEventKind`** (raised by hjkl as
+  optional): left off, as in crossterm, so a port's exhaustive matches keep
+  compiling. ttyr is pre-1.0, so a later variant is a minor bump; revisit at
+  1.0.
