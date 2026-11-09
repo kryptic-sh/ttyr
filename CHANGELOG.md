@@ -113,4 +113,8 @@ All notable changes to this project are documented here. The format follows
   last put the cursor instead of asking the terminal and waiting.
 - `execute!` calls `io::Write::flush` explicitly, so it works on a writer that
   is also a ratatui backend (which has a `flush` of its own).
+- Colour answers (OSC 4/10/11/12) are read in each of Xlib's numeric forms:
+  `rgb:` with 1 to 4 hex digits a channel, `#` with 3, 6, 9 or 12 digits, and
+  `rgbi:`. Before, only `rgb:` was read, and a terminal answering otherwise lost
+  its colours.
 - A `serde` feature deriving `Serialize` and `Deserialize` on every event type.

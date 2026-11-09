@@ -94,22 +94,58 @@ fn terminal_color(text: &str) -> Option<TerminalColor> {
         }
         _ => return None,
     };
-    let mut channels = spec.strip_prefix("rgb:")?.split('/');
-    let mut channel = || {
-        let digits = channels.next()?;
-        if !(1..=4).contains(&digits.len()) {
+    let rgb = x11_color(spec)?;
+    Some(TerminalColor { slot, rgb })
+}
+
+/// A colour in one of Xlib's numeric forms (`XParseColor`), each channel
+/// in 16 bits: `rgb:r/g/b` with 1 to 4 hex digits a channel, scaled to 16
+/// bits; `#rgb` with 1 to 4 hex digits a channel (3, 6, 9 or 12 in all), the
+/// digits the high bits; and `rgbi:r/g/b`, each between 0 and 1. Named
+/// colours are not read: terminals answer in numbers.
+fn x11_color(spec: &str) -> Option<(u16, u16, u16)> {
+    if let Some(channels) = spec.strip_prefix("rgb:") {
+        return three(channels.split('/'), |digits| {
+            if !(1..=4).contains(&digits.len()) {
+                return None;
+            }
+            let value = u32::from_str_radix(digits, 16).ok()?;
+            // X11 scales n digits to 16 bits: v * 0xffff / (16^n - 1).
+            let max = (1u32 << (4 * digits.len())) - 1;
+            u16::try_from(value * 0xffff / max).ok()
+        });
+    }
+    if let Some(digits) = spec.strip_prefix('#') {
+        let width = match digits.len() {
+            n @ (3 | 6 | 9 | 12) => n / 3,
+            _ => return None,
+        };
+        let fields = (0..3).map(|i| digits.get(i * width..(i + 1) * width));
+        return three(fields.map(Option::unwrap_or_default), |field| {
+            let value = u16::from_str_radix(field, 16).ok()?;
+            // The digits are the high bits: `#3a7` is `#3000a0007000`.
+            Some(value << (16 - 4 * field.len()))
+        });
+    }
+    let channels = spec.strip_prefix("rgbi:")?;
+    three(channels.split('/'), |field| {
+        let value: f64 = field.parse().ok()?;
+        if !(0.0..=1.0).contains(&value) {
             return None;
         }
-        let value = u32::from_str_radix(digits, 16).ok()?;
-        // X11 scales n digits to 16 bits: v * 0xffff / (16^n - 1).
-        let max = (1u32 << (4 * digits.len())) - 1;
-        u16::try_from(value * 0xffff / max).ok()
-    };
-    let rgb = (channel()?, channel()?, channel()?);
-    if channels.next().is_some() {
-        return None;
-    }
-    Some(TerminalColor { slot, rgb })
+        // In range, so the product fits: 0 to 65535.
+        Some((value * f64::from(u16::MAX)).round() as u16)
+    })
+}
+
+/// Exactly three fields, each read by `read`.
+fn three<'a>(
+    mut fields: impl Iterator<Item = &'a str>,
+    read: impl Fn(&str) -> Option<u16>,
+) -> Option<(u16, u16, u16)> {
+    let mut next = || fields.next().filter(|f| !f.is_empty()).and_then(&read);
+    let rgb = (next()?, next()?, next()?);
+    fields.next().is_none().then_some(rgb)
 }
 
 /// `ESC P >`: XTVERSION's answer, `DCS > | text ST`, or Alt+P and typing.

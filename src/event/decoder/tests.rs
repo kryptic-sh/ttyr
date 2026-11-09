@@ -842,3 +842,46 @@ fn win32_input_mode_records() {
     // A modifier key's own record is no event.
     assert_eq!(decode(b"\x1B[16;42;0;1;16;1_"), []);
 }
+
+/// A background colour answer's channels, for `spec`; `None` when the
+/// answer is not read as a colour.
+fn background(spec: &str) -> Option<(u16, u16, u16)> {
+    match one(format!("\x1B]11;{spec}\x1B\\").as_bytes()) {
+        Event::Report(Report::TerminalColor(TerminalColor {
+            slot: ColorSlot::Background,
+            rgb,
+        })) => Some(rgb),
+        _ => None,
+    }
+}
+
+/// Every numeric form Xlib's `XParseColor` reads, with the values its
+/// documentation gives: `rgb:` scales, `#` puts the digits in the high bits
+/// (`#3a7` is `#3000a0007000`), `rgbi:` is 0 to 1.
+#[test]
+fn colour_answers_in_every_x11_numeric_form() {
+    assert_eq!(background("rgb:f/80/abc"), Some((0xffff, 0x8080, 0xabca)));
+    assert_eq!(background("#3a7"), Some((0x3000, 0xa000, 0x7000)));
+    assert_eq!(background("#ff8000"), Some((0xff00, 0x8000, 0x0000)));
+    assert_eq!(background("#fff000a5a"), Some((0xfff0, 0x0000, 0xa5a0)));
+    assert_eq!(background("#1e1e1e1e2e2e"), Some((0x1e1e, 0x1e1e, 0x2e2e)));
+    assert_eq!(background("rgbi:1/0.5/0"), Some((0xffff, 0x8000, 0)));
+    assert_eq!(background("rgbi:0.0/1.0/0.25"), Some((0, 0xffff, 0x4000)));
+    // Not colours: wrong lengths, out of range, too many or too few
+    // channels, and names.
+    for spec in [
+        "#12345",
+        "#",
+        "#ggg",
+        "rgbi:1.5/0/0",
+        "rgbi:-0.1/0/0",
+        "rgbi:a/b/c",
+        "rgb:12345/0/0",
+        "rgb:1/2",
+        "rgb:1/2/3/4",
+        "rgbi:0/0/0/0",
+        "red",
+    ] {
+        assert_eq!(background(spec), None, "{spec}");
+    }
+}
