@@ -732,6 +732,8 @@ fn a_lone_esc_waits_until_flushed() {
 /// One of each kind of sequence the decoder reads.
 const CORPUS: &[&[u8]] = &[
     b"a",
+    b"\x1B[65;30;65;1;16;1_",
+    b"\x1B[0;0;55357;1;0;1_\x1B[0;0;56832;1;0;1_",
     "é😀".as_bytes(),
     b"\x1B[1;5A",
     b"\x1BOP",
@@ -818,4 +820,25 @@ fn noise_never_panics_and_reads_the_same_in_any_chunks() {
         events.extend(drain(&mut decoder));
         assert_eq!(events, expected, "{input:?}");
     }
+}
+
+/// Windows Terminal's win32-input-mode: `a` pressed and released, Ctrl+Enter,
+/// then a malformed record (key down 2).
+#[test]
+fn win32_input_mode_records() {
+    let a =
+        KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE).with_encoding(KeyEncoding::Windows);
+    let ctrl_enter =
+        KeyEvent::new(KeyCode::Enter, KeyModifiers::CONTROL).with_encoding(KeyEncoding::Windows);
+    assert_eq!(
+        decode(b"\x1B[65;30;97;1;0;1_\x1B[65;30;97;0;0;1_\x1B[13;28;10;1;8;1_\x1B[65;30;97;2;0;1_"),
+        [
+            Event::Key(a.clone()),
+            Event::Key(a.with_kind(KeyEventKind::Release)),
+            Event::Key(ctrl_enter),
+            Event::Unknown(b"\x1B[65;30;97;2;0;1_".to_vec()),
+        ]
+    );
+    // A modifier key's own record is no event.
+    assert_eq!(decode(b"\x1B[16;42;0;1;16;1_"), []);
 }

@@ -402,6 +402,11 @@ pub enum KeyEncoding {
     /// The kitty keyboard protocol's `CSI … u`, which xterm's
     /// `formatOtherKeys` form shares.
     Kitty,
+    /// The Windows console's key records: from the console API, or as
+    /// Windows Terminal's win32-input-mode writes them
+    /// (`CSI Vk ; Sc ; Uc ; Kd ; Cs ; Rc _`). Release and repeat are
+    /// reported; the text and the base-layout key are not.
+    Windows,
 }
 
 #[cfg(test)]

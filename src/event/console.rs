@@ -1,0 +1,302 @@
+//! The Windows console's key records as key events: what the console API
+//! hands a program (`KEY_EVENT_RECORD`), and what Windows Terminal's
+//! win32-input-mode writes as `CSI Vk ; Sc ; Uc ; Kd ; Cs ; Rc _`. Plain
+//! values in and out, so it is built and tested on every platform.
+//!
+//! Where crossterm reads these records it drops what ttyr keeps: a key's
+//! release and repeat, Ctrl with Enter and Backspace, and the keypad.
+
+use super::{KeyCode, KeyEncoding, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
+use crate::event::MediaKeyCode;
+
+#[cfg(test)]
+mod tests;
+
+/// A console key record's fields, as `KEY_EVENT_RECORD` has them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct KeyRecord {
+    /// The virtual-key code (`wVirtualKeyCode`).
+    pub vk: u16,
+    /// The scan code (`wVirtualScanCode`).
+    pub scan: u16,
+    /// The UTF-16 code unit the key typed, or 0 (`uChar`).
+    pub unit: u16,
+    /// Whether the key went down, not up (`bKeyDown`).
+    pub down: bool,
+    /// The modifier and lock state (`dwControlKeyState`).
+    pub state: u32,
+}
+
+// `dwControlKeyState` bits, fixed by the Windows API (wincon.h).
+const RIGHT_ALT_PRESSED: u32 = 0x0001;
+const LEFT_ALT_PRESSED: u32 = 0x0002;
+const RIGHT_CTRL_PRESSED: u32 = 0x0004;
+const LEFT_CTRL_PRESSED: u32 = 0x0008;
+const SHIFT_PRESSED: u32 = 0x0010;
+const NUMLOCK_ON: u32 = 0x0020;
+const CAPSLOCK_ON: u32 = 0x0080;
+const ENHANCED_KEY: u32 = 0x0100;
+
+// Virtual-key codes, fixed by the Windows API (winuser.h).
+const VK_BACK: u16 = 0x08;
+const VK_TAB: u16 = 0x09;
+const VK_CLEAR: u16 = 0x0C;
+const VK_RETURN: u16 = 0x0D;
+const VK_SHIFT: u16 = 0x10;
+const VK_CONTROL: u16 = 0x11;
+const VK_MENU: u16 = 0x12;
+const VK_PAUSE: u16 = 0x13;
+const VK_CAPITAL: u16 = 0x14;
+const VK_ESCAPE: u16 = 0x1B;
+const VK_SPACE: u16 = 0x20;
+const VK_PRIOR: u16 = 0x21;
+const VK_NEXT: u16 = 0x22;
+const VK_END: u16 = 0x23;
+const VK_HOME: u16 = 0x24;
+const VK_LEFT: u16 = 0x25;
+const VK_UP: u16 = 0x26;
+const VK_RIGHT: u16 = 0x27;
+const VK_DOWN: u16 = 0x28;
+const VK_SNAPSHOT: u16 = 0x2C;
+const VK_INSERT: u16 = 0x2D;
+const VK_DELETE: u16 = 0x2E;
+const VK_LWIN: u16 = 0x5B;
+const VK_RWIN: u16 = 0x5C;
+const VK_APPS: u16 = 0x5D;
+const VK_NUMPAD0: u16 = 0x60;
+const VK_NUMPAD9: u16 = 0x69;
+const VK_DIVIDE: u16 = 0x6F;
+const VK_F1: u16 = 0x70;
+const VK_F24: u16 = 0x87;
+const VK_NUMLOCK: u16 = 0x90;
+const VK_SCROLL: u16 = 0x91;
+const VK_VOLUME_MUTE: u16 = 0xAD;
+const VK_VOLUME_DOWN: u16 = 0xAE;
+const VK_VOLUME_UP: u16 = 0xAF;
+const VK_MEDIA_NEXT_TRACK: u16 = 0xB0;
+const VK_MEDIA_PREV_TRACK: u16 = 0xB1;
+const VK_MEDIA_STOP: u16 = 0xB2;
+const VK_MEDIA_PLAY_PAUSE: u16 = 0xB3;
+
+/// Turns console key records into key events, keeping what spans records:
+/// the key held down (so a second down is a repeat) and the first half of a
+/// surrogate pair.
+#[derive(Debug, Clone, Default)]
+pub struct ConsoleKeys {
+    /// The virtual-key code of the key down and not yet up.
+    held: Option<u16>,
+    /// A high surrogate waiting for its low half.
+    surrogate: Option<u16>,
+}
+
+impl ConsoleKeys {
+    /// The key event `record` is, or `None` for a record that is not one on
+    /// its own: a modifier or lock key (Shift, Ctrl, Alt, the Windows keys,
+    /// Caps Lock, Num Lock, Scroll Lock), a digit typed on the keypad as part
+    /// of an Alt code, or half of a surrogate pair.
+    pub fn key(&mut self, record: &KeyRecord) -> Option<KeyEvent> {
+        let key = self.code(record)?;
+        // An Alt code's character comes with Alt's release, but is typed.
+        let kind = if is_alt_code(record) {
+            KeyEventKind::Press
+        } else {
+            self.kind(record)
+        };
+        let mut modifiers = modifiers(record.state);
+        if alt_gr_typed(record) {
+            modifiers.remove(KeyModifiers::CONTROL | KeyModifiers::ALT);
+        }
+        let mut event = match key {
+            Key::Code(code) => KeyEvent::new(code, modifiers),
+            Key::Char(c) => char_event(c, modifiers),
+        };
+        event = event.with_kind(kind).with_state(state(record));
+        Some(event.with_encoding(KeyEncoding::Windows))
+    }
+
+    /// Press, repeat or release, from whether the same key is held.
+    fn kind(&mut self, record: &KeyRecord) -> KeyEventKind {
+        if !record.down {
+            if self.held == Some(record.vk) {
+                self.held = None;
+            }
+            return KeyEventKind::Release;
+        }
+        if self.held.replace(record.vk) == Some(record.vk) {
+            KeyEventKind::Repeat
+        } else {
+            KeyEventKind::Press
+        }
+    }
+
+    /// The key, by its virtual-key code where that names one, else by the
+    /// character it typed.
+    fn code(&mut self, record: &KeyRecord) -> Option<Key> {
+        let shift = record.state & SHIFT_PRESSED != 0;
+        let code = match record.vk {
+            _ if is_alt_code(record) => return self.typed(record.unit),
+            VK_SHIFT | VK_CONTROL | VK_MENU | VK_LWIN | VK_RWIN | VK_CAPITAL | VK_NUMLOCK
+            | VK_SCROLL => return None,
+            VK_NUMPAD0..=VK_NUMPAD9 if is_alt_code_digit(record.state) => return None,
+            VK_BACK => KeyCode::Backspace,
+            VK_TAB if shift => KeyCode::BackTab,
+            VK_TAB => KeyCode::Tab,
+            VK_RETURN => KeyCode::Enter,
+            VK_ESCAPE => KeyCode::Esc,
+            VK_SPACE => KeyCode::Char(' '),
+            VK_PRIOR => KeyCode::PageUp,
+            VK_NEXT => KeyCode::PageDown,
+            VK_END => KeyCode::End,
+            VK_HOME => KeyCode::Home,
+            VK_LEFT => KeyCode::Left,
+            VK_UP => KeyCode::Up,
+            VK_RIGHT => KeyCode::Right,
+            VK_DOWN => KeyCode::Down,
+            VK_INSERT => KeyCode::Insert,
+            VK_DELETE => KeyCode::Delete,
+            VK_CLEAR => KeyCode::KeypadBegin,
+            VK_PAUSE => KeyCode::Pause,
+            VK_SNAPSHOT => KeyCode::PrintScreen,
+            VK_APPS => KeyCode::Menu,
+            VK_F1..=VK_F24 => KeyCode::F(u8::try_from(record.vk - VK_F1 + 1).ok()?),
+            VK_VOLUME_MUTE => KeyCode::Media(MediaKeyCode::MuteVolume),
+            VK_VOLUME_DOWN => KeyCode::Media(MediaKeyCode::LowerVolume),
+            VK_VOLUME_UP => KeyCode::Media(MediaKeyCode::RaiseVolume),
+            VK_MEDIA_NEXT_TRACK => KeyCode::Media(MediaKeyCode::TrackNext),
+            VK_MEDIA_PREV_TRACK => KeyCode::Media(MediaKeyCode::TrackPrevious),
+            VK_MEDIA_STOP => KeyCode::Media(MediaKeyCode::Stop),
+            VK_MEDIA_PLAY_PAUSE => KeyCode::Media(MediaKeyCode::PlayPause),
+            _ => return self.typed_by(record),
+        };
+        Some(Key::Code(code))
+    }
+
+    /// A key with no code of its own: the character it typed, or with Ctrl,
+    /// whose unit is a control code, the key that Ctrl was held with.
+    fn typed_by(&mut self, record: &KeyRecord) -> Option<Key> {
+        match record.unit {
+            0x00..=0x1F => control_key(record),
+            unit => self.typed(unit),
+        }
+    }
+
+    /// The character `unit` completes: itself, or with the high surrogate
+    /// before it.
+    fn typed(&mut self, unit: u16) -> Option<Key> {
+        let units = match unit {
+            0xD800..=0xDBFF => {
+                self.surrogate = Some(unit);
+                return None;
+            }
+            0xDC00..=0xDFFF => [self.surrogate.take()?, unit],
+            _ => {
+                self.surrogate = None;
+                return char::from_u32(u32::from(unit)).map(Key::Char);
+            }
+        };
+        char::decode_utf16(units).next()?.ok().map(Key::Char)
+    }
+}
+
+/// A key: by code, or by the character it typed.
+enum Key {
+    Code(KeyCode),
+    Char(char),
+}
+
+/// The key Ctrl was held with, where the console gives its control code
+/// (`unit` below 0x20) or nothing: a letter or digit by its virtual-key
+/// code, which names it on every layout, and otherwise the character whose
+/// control code it is (`0x1B` is Ctrl+\[).
+fn control_key(record: &KeyRecord) -> Option<Key> {
+    let c = match u8::try_from(record.vk).ok()? {
+        vk @ (b'A'..=b'Z' | b'0'..=b'9') => char::from(vk).to_ascii_lowercase(),
+        _ => match record.unit {
+            0 => return None,
+            unit => char::from(u8::try_from(unit).ok()? | 0x40).to_ascii_lowercase(),
+        },
+    };
+    Some(Key::Char(c))
+}
+
+/// A typed character's event, as the decoder makes a legacy terminal's: an
+/// upper-case letter typed with Shift is its lower case with Shift, the
+/// letter typed in `shifted`; one typed by Caps Lock alone is its lower case
+/// with the lock in the state.
+fn char_event(c: char, modifiers: KeyModifiers) -> KeyEvent {
+    let mut lower = c.to_lowercase();
+    match (lower.next(), lower.next()) {
+        (Some(l), None) if l != c => {
+            let event = KeyEvent::new(KeyCode::Char(l), modifiers);
+            if modifiers.contains(KeyModifiers::SHIFT) {
+                event.with_shifted(Some(c))
+            } else {
+                event
+            }
+        }
+        _ => KeyEvent::new(KeyCode::Char(c), modifiers),
+    }
+}
+
+/// Shift, Ctrl and Alt from the control key state.
+fn modifiers(state: u32) -> KeyModifiers {
+    let mut modifiers = KeyModifiers::NONE;
+    if state & SHIFT_PRESSED != 0 {
+        modifiers |= KeyModifiers::SHIFT;
+    }
+    if state & (LEFT_CTRL_PRESSED | RIGHT_CTRL_PRESSED) != 0 {
+        modifiers |= KeyModifiers::CONTROL;
+    }
+    if state & (LEFT_ALT_PRESSED | RIGHT_ALT_PRESSED) != 0 {
+        modifiers |= KeyModifiers::ALT;
+    }
+    modifiers
+}
+
+/// The lock state, and whether the key is on the keypad.
+fn state(record: &KeyRecord) -> KeyEventState {
+    let mut state = KeyEventState::NONE;
+    if record.state & CAPSLOCK_ON != 0 {
+        state |= KeyEventState::CAPS_LOCK;
+    }
+    if record.state & NUMLOCK_ON != 0 {
+        state |= KeyEventState::NUM_LOCK;
+    }
+    if on_keypad(record) {
+        state |= KeyEventState::KEYPAD;
+    }
+    state
+}
+
+/// Whether the key is on the keypad: its digits and operators, its Enter
+/// (an enhanced Enter), and with Num Lock off its navigation keys, which
+/// share codes with the dedicated ones but are not enhanced.
+fn on_keypad(record: &KeyRecord) -> bool {
+    let enhanced = record.state & ENHANCED_KEY != 0;
+    match record.vk {
+        VK_NUMPAD0..=VK_DIVIDE | VK_CLEAR => true,
+        VK_RETURN => enhanced,
+        VK_PRIOR..=VK_DOWN | VK_INSERT | VK_DELETE => !enhanced,
+        _ => false,
+    }
+}
+
+/// Whether AltGr typed the character: the console reports AltGr as right
+/// Alt with left Ctrl, which then are not modifiers of what it typed.
+fn alt_gr_typed(record: &KeyRecord) -> bool {
+    let alt_gr = RIGHT_ALT_PRESSED | LEFT_CTRL_PRESSED;
+    record.state & alt_gr == alt_gr && record.unit >= 0x20 && record.unit != 0x7F
+}
+
+/// Whether the record ends an Alt code: Alt's release, with the character
+/// the code typed.
+const fn is_alt_code(record: &KeyRecord) -> bool {
+    record.vk == VK_MENU && !record.down && record.unit != 0
+}
+
+/// Whether a keypad digit is part of an Alt code: Alt held alone.
+const fn is_alt_code_digit(state: u32) -> bool {
+    let alt = state & (LEFT_ALT_PRESSED | RIGHT_ALT_PRESSED) != 0;
+    let other = state & (SHIFT_PRESSED | LEFT_CTRL_PRESSED | RIGHT_CTRL_PRESSED) != 0;
+    alt && !other
+}

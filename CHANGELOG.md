@@ -87,4 +87,10 @@ All notable changes to this project are documented here. The format follows
 - Screen commands in `ttyr::terminal`: `Clear` (crossterm's `ClearType`s, plus
   `FromLineStart`), `ScrollUp`, `ScrollDown`, `SetScrollRegion`,
   `ResetScrollRegion`, `DisableLineWrap`, `EnableLineWrap` and `SetTitle`.
+- The decoder reads Windows Terminal's win32-input-mode key records
+  (`CSI Vk ; Sc ; Uc ; Kd ; Cs ; Rc _`) as key events with the new
+  `KeyEncoding::Windows`. Releases and repeats are reported, and Ctrl+Enter and
+  Ctrl+Backspace keep their Ctrl. An AltGr character has no Ctrl+Alt, and Caps
+  Lock, Num Lock and the keypad are in the state. The same mapping will read the
+  console API's records on Windows.
 - A `serde` feature deriving `Serialize` and `Deserialize` on every event type.

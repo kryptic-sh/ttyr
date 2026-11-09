@@ -52,6 +52,20 @@ What is not done yet, and why.
   `a_paste_waits_past_a_flush_for_its_end` then hangs rather than fails (checked
   by removing the guard).
 
+## Phase 07 in progress (Windows)
+
+- **A modifier or lock key's own record is dropped** (`ConsoleKeys::key`):
+  Shift, Ctrl, Alt, the Windows keys and the locks pressed alone are no event,
+  as in crossterm, where kitty reports them with flag 8. A consumer that wants
+  them gets a `KeyCode::Modifier` mapping (left and right from the scan code or
+  `ENHANCED_KEY`).
+- **Ctrl with a non-letter key reads the control code**, not the layout: on a
+  layout where `[` is not where VK_OEM_4 sits, Ctrl+that key still reads as
+  Ctrl+\[ when the console gives 0x1B. Reading the layout needs `ToUnicodeEx`
+  (crossterm's way), Windows-only.
+- **win32-input-mode's repeat count (`Rc`) is not read.** Windows Terminal sends
+  a held key as more records, which read as repeats.
+
 ## Left from phase 05 (output)
 
 - **No hyperlink (OSC 8) or clipboard (OSC 52) commands.** Neither hjkl nor tmxr

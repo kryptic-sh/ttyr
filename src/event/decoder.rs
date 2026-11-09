@@ -5,6 +5,7 @@ mod strings;
 #[cfg(test)]
 mod tests;
 
+use super::console::{ConsoleKeys, KeyRecord};
 use super::{Event, KeyCode, KeyEncoding, KeyEvent, KeyEventState, KeyModifiers};
 
 const ESC: u8 = 0x1B;
@@ -43,6 +44,9 @@ pub struct Decoder {
     /// Inside a bracketed paste: how much of the pasted text has been searched
     /// for its end.
     paste_scanned: Option<usize>,
+    /// What spans win32-input-mode's key records: the key held, and half a
+    /// surrogate pair.
+    console: ConsoleKeys,
 }
 
 impl Decoder {
@@ -99,6 +103,12 @@ impl Decoder {
                     self.start += len;
                     self.paste_scanned = Some(0);
                 }
+                Parsed::ConsoleKey(record, len) => {
+                    self.start += len;
+                    if let Some(key) = self.console.key(&record) {
+                        return Some(Event::Key(key));
+                    }
+                }
                 Parsed::Incomplete => return None,
             }
         }
@@ -130,6 +140,9 @@ enum Parsed {
     Event(Event, usize),
     /// A bracketed paste begins, after this many bytes.
     PasteStart(usize),
+    /// A Windows console key record (win32-input-mode), and how many bytes
+    /// it took; the decoder's [`ConsoleKeys`] makes it an event, or not.
+    ConsoleKey(KeyRecord, usize),
     /// The start of something whose rest has not arrived.
     Incomplete,
 }
@@ -255,7 +268,7 @@ fn parse_alt(buf: &[u8], at_end: bool) -> Parsed {
             Parsed::key(key, len + 1)
         }
         Parsed::Incomplete => Parsed::Incomplete,
-        Parsed::Event(..) | Parsed::PasteStart(_) => {
+        Parsed::Event(..) | Parsed::PasteStart(_) | Parsed::ConsoleKey(..) => {
             Parsed::key(legacy_key(KeyCode::Esc, KeyModifiers::NONE), 1)
         }
     }

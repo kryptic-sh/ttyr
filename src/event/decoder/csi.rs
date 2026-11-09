@@ -2,6 +2,7 @@
 //! terminal's reports.
 
 use super::{Parsed, char_key, legacy_key, parse_alt};
+use crate::event::console::KeyRecord;
 use crate::event::{
     ColorScheme, Event, KeyCode, KeyEncoding, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers,
     KeyboardEnhancementFlags, MediaKeyCode, ModeSetting, ModifierKeyCode, MouseButton, MouseEvent,
@@ -71,6 +72,7 @@ pub(super) fn parse(buf: &[u8], at_end: bool) -> Parsed {
     match dispatch(params, intermediates, last) {
         Some(Dispatched::Event(event)) => Parsed::Event(event, len),
         Some(Dispatched::PasteStart) => Parsed::PasteStart(len),
+        Some(Dispatched::ConsoleKey(record)) => Parsed::ConsoleKey(record, len),
         None => Parsed::unknown(&buf[..len]),
     }
 }
@@ -80,6 +82,39 @@ const NONE: KeyModifiers = KeyModifiers::NONE;
 enum Dispatched {
     Event(Event),
     PasteStart,
+    ConsoleKey(KeyRecord),
+}
+
+/// Windows Terminal's win32-input-mode key record,
+/// `CSI Vk ; Sc ; Uc ; Kd ; Cs ; Rc _`, each field a number and 0 when left
+/// out. The repeat count (`Rc`) is not read: Windows Terminal sends a held
+/// key as more records, which [`ConsoleKeys`](crate::event::console) reads as
+/// repeats.
+fn console_record(params: &Params) -> Option<KeyRecord> {
+    if params.len() > 6 || params.iter().any(|values| values.len() > 1) {
+        return None;
+    }
+    let field = |i: usize| {
+        let value = params
+            .get(i)
+            .and_then(|values| values.first().copied().flatten());
+        u16::try_from(value.unwrap_or(0)).ok()
+    };
+    let state = params
+        .get(4)
+        .and_then(|values| values.first().copied().flatten())
+        .unwrap_or(0);
+    Some(KeyRecord {
+        vk: field(0)?,
+        scan: field(1)?,
+        unit: field(2)?,
+        down: match field(3)? {
+            0 => false,
+            1 => true,
+            _ => return None,
+        },
+        state,
+    })
 }
 
 /// A whole CSI sequence's meaning, or `None` for one ttyr does not decode.
@@ -96,6 +131,7 @@ fn dispatch(params: &[u8], intermediates: &[u8], last: u8) -> Option<Dispatched>
     };
     let report = |report| Some(Dispatched::Event(Event::Report(report)));
     let event = match (private, intermediates, last) {
+        (None, b"", b'_') => return console_record(&params).map(Dispatched::ConsoleKey),
         (None, b"", b'u') => Event::Key(kitty_key(&params)?),
         (None, b"", b'~') => match p(0) {
             Some(200) => return Some(Dispatched::PasteStart),

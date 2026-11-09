@@ -1,5 +1,6 @@
 //! Events a terminal sends, and the [`Decoder`] that reads them from bytes.
 
+mod console;
 mod decoder;
 mod key;
 mod mouse;
