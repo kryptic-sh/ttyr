@@ -28,7 +28,9 @@ pub use sys::{
     WindowSize, disable_raw_mode, enable_raw_mode, is_raw_mode_enabled, size, window_size,
 };
 #[cfg(unix)]
-pub(crate) use unix::{open_tty, window_size_of};
+pub(crate) use unix::open_tty;
+#[cfg(unix)]
+pub use unix::{enable_raw_mode_on, size_of, window_size_of};
 #[cfg(windows)]
 pub(crate) use windows::{Console, console_mode, window_size_of, window_top};
 

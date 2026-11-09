@@ -35,7 +35,13 @@ pub fn window_size() -> io::Result<WindowSize> {
     window_size_of(open_tty()?)
 }
 
-/// The size of the terminal `tty` is.
+/// The size of the terminal `tty`, columns then rows.
+pub fn size_of(tty: impl AsFd) -> io::Result<(u16, u16)> {
+    let size = window_size_of(tty)?;
+    Ok((size.columns, size.rows))
+}
+
+/// The size of the terminal `tty`, in cells and pixels.
 pub fn window_size_of(tty: impl AsFd) -> io::Result<WindowSize> {
     let size = tcgetwinsize(tty)?;
     Ok(WindowSize {
@@ -70,12 +76,21 @@ fn raw() -> MutexGuard<'static, Option<(OwnedFd, Termios)>> {
 /// attributes from before are kept for [`disable_raw_mode`]. Calling it while
 /// raw mode is on does nothing.
 pub fn enable_raw_mode() -> io::Result<()> {
-    enable_raw_mode_on(open_tty)
+    enable_raw_mode_with(open_tty)
+}
+
+/// [`enable_raw_mode`] on `tty`, a terminal that need not be the controlling
+/// one: stdin, say, for a program whose session has no controlling terminal.
+/// A duplicate of `tty` is kept, so [`disable_raw_mode`], the guard's
+/// `restore` and its panic hook put back the attributes of this terminal.
+/// Calling it while raw mode is on (on any terminal) does nothing.
+pub fn enable_raw_mode_on(tty: impl AsFd) -> io::Result<()> {
+    enable_raw_mode_with(|| tty.as_fd().try_clone_to_owned())
 }
 
 /// [`enable_raw_mode`] on the terminal `open` opens, opened only if raw mode
 /// is off.
-pub fn enable_raw_mode_on(open: impl FnOnce() -> io::Result<OwnedFd>) -> io::Result<()> {
+pub fn enable_raw_mode_with(open: impl FnOnce() -> io::Result<OwnedFd>) -> io::Result<()> {
     let mut raw = raw();
     if raw.is_none() {
         *raw = Some(make_raw(open()?)?);
@@ -90,7 +105,7 @@ pub fn disable_raw_mode() -> io::Result<()> {
 }
 
 /// [`disable_raw_mode`], returning the terminal raw mode was on so that
-/// [`enable_raw_mode_on`] can put it back in raw mode; `None` when it was off.
+/// [`enable_raw_mode_with`] can put it back in raw mode; `None` when it was off.
 pub fn take_raw() -> io::Result<Option<OwnedFd>> {
     let mut raw = raw();
     if let Some((tty, original)) = raw.as_ref() {

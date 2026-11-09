@@ -21,7 +21,7 @@ use super::modes::{
 };
 use super::modes::{DisableWin32InputMode, EnableWin32InputMode};
 use super::sys::{
-    RawTty, enable_raw_mode_on, is_raw_mode_enabled, panic_output, take_raw, take_raw_after_panic,
+    RawTty, enable_raw_mode_with, is_raw_mode_enabled, panic_output, take_raw, take_raw_after_panic,
 };
 use crate::command::Command;
 use crate::cursor::Show;
@@ -224,7 +224,7 @@ pub fn suspend_with<T>(out: &mut impl Write, f: impl FnOnce() -> T) -> io::Resul
     let (modes, tty) = release(out)?;
     let result = f();
     if let Some(tty) = tty {
-        enable_raw_mode_on(|| Ok(tty))?;
+        enable_raw_mode_with(|| Ok(tty))?;
     }
     for mode in modes {
         enable(out, mode)?;

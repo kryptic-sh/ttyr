@@ -12,7 +12,7 @@ use rustix::termios::{LocalModes, OptionalActions, tcgetattr, tcsetattr};
 use super::{Mode, disable, enable, restore, restore_on_panic, suspend_with};
 use crate::event::KeyboardEnhancementFlags as Flags;
 use crate::terminal::MouseTracking;
-use crate::terminal::unix::{enable_raw_mode_on, is_raw_mode_enabled};
+use crate::terminal::unix::{enable_raw_mode_with, is_raw_mode_enabled};
 use crate::test_pty::{local_modes, pty, terminal_state};
 
 const ANY: Mode = Mode::Mouse {
@@ -45,7 +45,7 @@ fn read_back(term: &File, len: usize) -> String {
 /// Puts `tty` in raw mode through the guard's own state.
 fn raw(tty: &OwnedFd) {
     let tty = tty.try_clone().unwrap();
-    enable_raw_mode_on(|| Ok(tty)).unwrap();
+    enable_raw_mode_with(|| Ok(tty)).unwrap();
 }
 
 #[test]

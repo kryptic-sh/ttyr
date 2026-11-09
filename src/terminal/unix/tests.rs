@@ -3,7 +3,7 @@
 use rustix::termios::{LocalModes, Termios, Winsize, tcgetattr, tcsetwinsize};
 
 use super::WindowSize;
-use super::{disable_raw_mode, enable_raw_mode_on, is_raw_mode_enabled, window_size_of};
+use super::{disable_raw_mode, enable_raw_mode_with, is_raw_mode_enabled, window_size_of};
 use crate::test_pty::{local_modes, pty, terminal_state as serial};
 
 /// The attributes raw mode changes, comparable.
@@ -45,7 +45,7 @@ fn raw_mode_turns_off_line_editing_and_restores_exactly() {
             .local_modes
             .contains(LocalModes::ICANON | LocalModes::ECHO)
     );
-    enable_raw_mode_on(|| tty.try_clone()).unwrap();
+    enable_raw_mode_with(|| tty.try_clone()).unwrap();
     assert!(is_raw_mode_enabled());
     let raw = tcgetattr(&tty).unwrap();
     assert!(
@@ -62,11 +62,40 @@ fn raw_mode_twice_keeps_the_first_attributes() {
     let _serial = serial();
     let (_term, tty) = pty();
     let before = tcgetattr(&tty).unwrap();
-    enable_raw_mode_on(|| tty.try_clone()).unwrap();
+    enable_raw_mode_with(|| tty.try_clone()).unwrap();
     // Raw already: the terminal is not opened again, nor raw taken as the
     // attributes to put back.
-    enable_raw_mode_on(|| panic!("opened again")).unwrap();
+    enable_raw_mode_with(|| panic!("opened again")).unwrap();
     disable_raw_mode().unwrap();
     disable_raw_mode().unwrap();
     assert_eq!(modes(&tcgetattr(&tty).unwrap()), modes(&before));
+}
+
+/// tmxr's client under a launcher that leaves it no controlling terminal:
+/// raw mode and the size on the terminal it was given.
+#[test]
+fn raw_mode_and_size_on_a_given_terminal() {
+    let _serial = serial();
+    let (term, tty) = pty();
+    tcsetwinsize(
+        &term,
+        Winsize {
+            ws_row: 30,
+            ws_col: 100,
+            ws_xpixel: 0,
+            ws_ypixel: 0,
+        },
+    )
+    .unwrap();
+    assert_eq!(super::size_of(&tty).unwrap(), (100, 30));
+    let before = tcgetattr(&tty).unwrap();
+    super::enable_raw_mode_on(&tty).unwrap();
+    let raw = tcgetattr(&tty).unwrap();
+    assert!(!raw.local_modes.contains(LocalModes::ICANON));
+    // The duplicate kept is what raw mode restores, after `tty` itself is
+    // gone.
+    let probe = tty.try_clone().unwrap();
+    drop(tty);
+    disable_raw_mode().unwrap();
+    assert_eq!(modes(&tcgetattr(&probe).unwrap()), modes(&before));
 }

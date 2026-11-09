@@ -190,12 +190,12 @@ fn raw_state() -> MutexGuard<'static, Option<(Console, CONSOLE_MODE, CONSOLE_MOD
 /// commands' sequences work. Its modes from before are kept for
 /// [`disable_raw_mode`]. Calling it while raw mode is on does nothing.
 pub fn enable_raw_mode() -> io::Result<()> {
-    enable_raw_mode_on(Console::open)
+    enable_raw_mode_with(Console::open)
 }
 
 /// [`enable_raw_mode`] on the console `open` opens, opened only if raw mode
 /// is off.
-pub fn enable_raw_mode_on(open: impl FnOnce() -> io::Result<Console>) -> io::Result<()> {
+pub fn enable_raw_mode_with(open: impl FnOnce() -> io::Result<Console>) -> io::Result<()> {
     let mut raw = raw_state();
     if raw.is_none() {
         let console = open()?;
@@ -223,7 +223,7 @@ pub fn disable_raw_mode() -> io::Result<()> {
 }
 
 /// [`disable_raw_mode`], returning the console so that
-/// [`enable_raw_mode_on`] can put it back in raw mode; `None` when raw mode
+/// [`enable_raw_mode_with`] can put it back in raw mode; `None` when raw mode
 /// was off.
 pub fn take_raw() -> io::Result<Option<Console>> {
     let mut raw = raw_state();

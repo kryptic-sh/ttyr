@@ -118,4 +118,9 @@ All notable changes to this project are documented here. The format follows
   `rgb:` with 1 to 4 hex digits a channel, `#` with 3, 6, 9 or 12 digits, and
   `rgbi:`. Before, only `rgb:` was read, and a terminal answering otherwise lost
   its colours.
+- `terminal::enable_raw_mode_on(fd)`, `size_of(fd)` and `window_size_of(fd)`
+  (Unix): raw mode and the size on a given terminal, such as stdin, for a
+  program with no controlling terminal (a `setsid` launcher, some service
+  managers). `disable_raw_mode`, the guard's `restore` and its panic hook act on
+  that terminal.
 - A `serde` feature deriving `Serialize` and `Deserialize` on every event type.
