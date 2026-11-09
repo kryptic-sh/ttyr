@@ -25,4 +25,11 @@ All notable changes to this project are documented here. The format follows
 - `KeyEvent::logical_char` and `KeyEvent::logical_modifiers`, the character a
   key was meant to type across encodings, and `KeyEvent::normalize_legacy`,
   hjkl-kitty's Ctrl+\[/I/M aliases.
+- `ttyr::reader::Reader` (Unix): reads events from `/dev/tty` or a given fd with
+  crossterm's `poll(timeout)` and `read()`. It delivers `Event::Resize` on
+  `SIGWINCH`, watched from before `open` returns, and `Event::Wake` when its
+  `Waker` is woken from another thread. Signals never end a wait early or
+  surface as errors. An optional escape timeout holds a lone `ESC` for the rest
+  of a sequence. Only one reader can be open per process at a time, and it reads
+  only when asked to.
 - A `serde` feature deriving `Serialize` and `Deserialize` on every event type.

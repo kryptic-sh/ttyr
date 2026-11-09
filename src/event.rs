@@ -40,6 +40,9 @@ pub enum Event {
     /// The terminal's new size, columns then rows. The reader sends it on
     /// `SIGWINCH`; the decoder never does.
     Resize(u16, u16),
+    /// The reader's `Waker` woke it (`ttyr::reader`, on Unix); the decoder
+    /// never sends it.
+    Wake,
     /// A report: an answer to a query, or a change the terminal announces.
     Report(Report),
     /// Bytes that are not an event ttyr knows: a well-formed sequence it does

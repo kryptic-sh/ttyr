@@ -2,8 +2,9 @@
 
 What is not done yet, and why.
 
-- **Phases 03 to 08 are not implemented.** `ttyr::event` (the event types and
-  the `Decoder`) is all there is; the rest is planned in `docs/plan/`.
+- **Phases 04 to 08 are not implemented.** `ttyr::event` (the event types and
+  the `Decoder`) and `ttyr::reader` (Unix) are all there is; the rest is planned
+  in `docs/plan/`.
 - **The crate name is not reserved on crates.io.** `ttyr` was free on
   2026-11-09; it is taken when the first version is published by the tag
   pipeline in `.github/workflows/ci.yml`.
@@ -32,6 +33,25 @@ What is not done yet, and why.
   (1005), and mouse buttons 10 and 11. Add each when a consumer asks.
 - **No convenience methods on `Event`** (crossterm's `is_key_press`,
   `as_key_event` and the like). Add the ones a port turns out to need.
+
+## Left from phase 03 (Unix reader)
+
+- **No async `Stream`.** Neither consumer needs one (01's open question on
+  async); add it behind a feature when one does.
+- **Not verified on a real terminal**, only over a pty in the tests: `/dev/tty`
+  as the controlling terminal, and a `SIGWINCH` the kernel sends on a real
+  resize (the tests raise it themselves, as a pty that is not the controlling
+  terminal gets none). tmxr's adoption is the first real run.
+- **macOS and the BSDs run only in CI.** `Reader` waits with `select` for
+  macOS's sake; the tests ran locally on Linux.
+- **The `unsafe` `select` call has had no dynamic analysis.** Miri cannot run
+  system calls; the safety argument is that every fd in the set is borrowed from
+  the `Reader` for the call (see `Reader::wait_ready`).
+- **A spinning wait shows only as a hang.** If the `flushed` guard in
+  `Reader::wait` were lost, a held paste or long sequence would be flushed again
+  and again, never reaching the deadline:
+  `a_paste_waits_past_a_flush_for_its_end` then hangs rather than fails (checked
+  by removing the guard).
 
 ## Decided in phase 02, where the bytes are ambiguous
 

@@ -113,11 +113,27 @@ input (decided by the owner, 2026-11-09, to replace it entirely):
     in its server (tmxr's session, 2026-11-09).
   - `serde` is a plain derive: tmxr versions its own protocol and builds both
     ends from one tree, so ttyr promises no stable wire shape.
+- **Reading a Unix tty** (03, settled with tmxr's session, 2026-11-10):
+  - The system calls go through `rustix` and `SIGWINCH` through `signal-hook`
+    (the owner's choice over hand-written libc FFI; crossterm uses both, so
+    neither is new to tmxr's or hjkl's tree).
+  - `ttyr::reader::Reader` waits with `select`, not `poll`: macOS's `poll` does
+    not support devices, ttys among them.
+  - The escape timeout defaults to none, as crossterm behaves, and is set with
+    `Reader::set_escape_timeout`.
+  - `SIGWINCH` is watched before `Reader::open` returns, so tmxr compares the
+    size once with the one its hello sent and misses no resize.
+  - One reader per process, released on drop so tmxr can re-attach; it reads
+    only inside `poll` and `read`, never on a thread of its own, so a paused
+    tmxr client leaves the tty to its lock command.
+  - A `Waker` (`Send`, `Sync`, `Clone`) ends a wait with `Event::Wake`; it
+    replaces tmxr's `raise(SIGWINCH)` to break crossterm's read.
 
 ## Open questions
 
 - **Async.** Which runtime-neutral shape (a `Stream` over a non-blocking fd) and
-  behind which feature, given hjkl does not need it today.
+  behind which feature. Neither tmxr nor hjkl needs it (both read on a blocking
+  thread; tmxr has no tokio), so 03 shipped without it.
 - **hjkl-kitty**: settled with hjkl's session (2026-11-09). Its push/pop moves
   into 04 and its normalising into `KeyEvent::normalize_legacy` (02, done),
   after which it is deleted.
