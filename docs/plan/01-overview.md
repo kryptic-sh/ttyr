@@ -113,6 +113,28 @@ input (decided by the owner, 2026-11-09, to replace it entirely):
     in its server (tmxr's session, 2026-11-09).
   - `serde` is a plain derive: tmxr versions its own protocol and builds both
     ends from one tree, so ttyr promises no stable wire shape.
+- **The restore guard** (04, reviewed by tmxr's session, 2026-11-10):
+  - It's free functions over one record per process (`ttyr::terminal::enable`,
+    `disable`, `restore`), not an RAII value: both apps restore on several
+    paths, and the panic hook has to reach the record. tmxr keeps its own thin
+    guard whose `Drop` calls `restore`.
+  - One of each kind of mode is on at a time. Enabling another value (a
+    different mouse level, different kitty flags) turns the old one off and the
+    new one on in its place.
+  - Mouse capture comes in levels (`MouseTracking`: 1000, 1002 or 1003, with or
+    without 1006), so tmxr can follow a pane's own mode. `EnableMouseCapture`
+    stays as crossterm's everything form.
+  - `suspend_with(out, f)` gives the terminal back around `f`: tmxr's lock
+    command, hjkl's `:!cmd`. `suspend` is built on it. On the way back, the
+    modes return with their latest values, and raw mode reads the terminal's
+    attributes afresh, so what the program in between changed is kept.
+  - `restore_on_panic` installs its hook once and calls the previous hook after
+    restoring. It writes to the tty raw mode is on (or `/dev/tty`), not stdout,
+    whose lock the panicking thread may hold.
+  - The colour scheme query (`RequestColorScheme`) is a command of its own, so
+    turning the reports back on doesn't ask again.
+  - On Windows (07), `enable` and `disable` also set the console's modes behind
+    the same signatures.
 - **Reading a Unix tty** (03, settled with tmxr's session, 2026-11-10):
   - The system calls go through `rustix` and `SIGWINCH` through `signal-hook`
     (the owner's choice over hand-written libc FFI; crossterm uses both, so

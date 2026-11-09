@@ -74,7 +74,7 @@ pub fn enable_raw_mode() -> io::Result<()> {
 
 /// [`enable_raw_mode`] on the terminal `open` opens, opened only if raw mode
 /// is off.
-fn enable_raw_mode_on(open: impl FnOnce() -> io::Result<OwnedFd>) -> io::Result<()> {
+pub fn enable_raw_mode_on(open: impl FnOnce() -> io::Result<OwnedFd>) -> io::Result<()> {
     let mut raw = raw();
     if raw.is_none() {
         *raw = Some(make_raw(open()?)?);
@@ -85,12 +85,26 @@ fn enable_raw_mode_on(open: impl FnOnce() -> io::Result<OwnedFd>) -> io::Result<
 /// Puts back the attributes the terminal had before [`enable_raw_mode`].
 /// Calling it while raw mode is off does nothing.
 pub fn disable_raw_mode() -> io::Result<()> {
+    take_raw().map(drop)
+}
+
+/// [`disable_raw_mode`], returning the terminal raw mode was on so that
+/// [`enable_raw_mode_on`] can put it back in raw mode; `None` when it was off.
+pub fn take_raw() -> io::Result<Option<OwnedFd>> {
     let mut raw = raw();
     if let Some((tty, original)) = raw.as_ref() {
         tcsetattr(tty, OptionalActions::Now, original)?;
-        *raw = None;
     }
-    Ok(())
+    Ok(raw.take().map(|(tty, _)| tty))
+}
+
+/// [`take_raw`] for a panic hook, which may run while this thread holds the
+/// state: it is skipped then, and a failure has nowhere to be reported.
+pub fn take_raw_after_panic() -> Option<OwnedFd> {
+    let (tty, original) = super::lock_after_panic(&RAW)?.take()?;
+    // A panic hook has nowhere to report a failure; the attributes stay raw.
+    let _ = tcsetattr(&tty, OptionalActions::Now, &original);
+    Some(tty)
 }
 
 /// Whether [`enable_raw_mode`] has put the terminal in raw mode.

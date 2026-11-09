@@ -3,6 +3,7 @@
 
 use std::fs::File;
 use std::os::fd::OwnedFd;
+use std::sync::{Mutex, MutexGuard, PoisonError};
 
 use rustix::fs::{Mode, OFlags};
 use rustix::pty::{OpenptFlags, grantpt, openpt, ptsname, unlockpt};
@@ -31,4 +32,11 @@ pub fn raw_pty() -> (File, OwnedFd) {
     termios.make_raw();
     tcsetattr(&slave, OptionalActions::Now, &termios).unwrap();
     (master, slave)
+}
+
+/// Raw mode and the guard's record are one per process, so the tests that
+/// touch them take turns.
+pub fn terminal_state() -> MutexGuard<'static, ()> {
+    static STATE: Mutex<()> = Mutex::new(());
+    STATE.lock().unwrap_or_else(PoisonError::into_inner)
 }

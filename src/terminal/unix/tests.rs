@@ -1,19 +1,10 @@
 //! Size and raw mode on a pty.
 
-use std::sync::{Mutex, MutexGuard, PoisonError};
-
 use rustix::termios::{LocalModes, Termios, Winsize, tcgetattr, tcsetwinsize};
 
 use super::WindowSize;
 use super::{disable_raw_mode, enable_raw_mode_on, is_raw_mode_enabled, window_size_of};
-use crate::test_pty::pty;
-
-/// Raw mode is one per process, so its tests take turns.
-static SERIAL: Mutex<()> = Mutex::new(());
-
-fn serial() -> MutexGuard<'static, ()> {
-    SERIAL.lock().unwrap_or_else(PoisonError::into_inner)
-}
+use crate::test_pty::{pty, terminal_state as serial};
 
 /// The attributes raw mode changes, comparable.
 fn modes(termios: &Termios) -> impl PartialEq + std::fmt::Debug {

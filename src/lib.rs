@@ -4,10 +4,10 @@
 //! Implemented so far: [`event`], the event types and a pure [`Decoder`]
 //! from the bytes a terminal sends to events; [`command`], crossterm's
 //! `Command` with `queue!` and `execute!`; [`terminal`], the modes a program
-//! turns on as commands, and on Unix the terminal's size and raw mode; and on
-//! Unix `reader`, which reads events from a tty. The restore guard, output,
-//! the ratatui backend and Windows are planned in `docs/plan/` in the
-//! repository.
+//! turns on as commands, and on Unix the terminal's size, raw mode and the
+//! guard that restores it; and on Unix `reader`, which reads events from a
+//! tty. Capability queries, output, the ratatui backend and Windows are
+//! planned in `docs/plan/` in the repository.
 //!
 //! [`Decoder`]: event::Decoder
 

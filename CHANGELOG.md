@@ -51,4 +51,15 @@ All notable changes to this project are documented here. The format follows
   `EnableMouseCapture` turns on 1000, 1002, 1003 and 1006, but not crossterm's
   urxvt 1015: a terminal without SGR reports falls back to X10's form, which the
   decoder reads.
+- The restore guard in `ttyr::terminal` (Unix):
+  - `enable` and `disable` turn a `Mode` on and off and record it. `Mode` covers
+    the alternate screen, mouse at one level, bracketed paste, focus, colour
+    scheme reports, modifyOtherKeys and kitty flags. Enabling a mode that is on
+    with another value replaces it.
+  - `restore` turns every recorded mode off in reverse order, shows the cursor
+    and leaves raw mode. A second call does nothing.
+  - `restore_on_panic` installs a panic hook, once, that restores and then runs
+    the hook that was there before.
+  - `suspend_with(out, f)` gives the terminal back while `f` runs, then takes it
+    again; `suspend` stops the process with `SIGTSTP` in between.
 - A `serde` feature deriving `Serialize` and `Deserialize` on every event type.

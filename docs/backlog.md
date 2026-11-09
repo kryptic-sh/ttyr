@@ -53,6 +53,22 @@ What is not done yet, and why.
   `a_paste_waits_past_a_flush_for_its_end` then hangs rather than fails (checked
   by removing the guard).
 
+## Left from phase 04 so far (terminal modes)
+
+- **`suspend` itself has no test**: raising `SIGTSTP` would stop the test
+  process. `suspend_with`, which it is built on, is tested; `suspend` adds only
+  the `raise`.
+- **A `SIGTSTP` sent from outside while in raw mode** (`kill -TSTP`) stops the
+  process with the terminal still raw and its modes on. Ctrl+Z in raw mode is a
+  key, not a signal, so a program calls `suspend` itself. Catching an outside
+  one needs a handler that restores before stopping.
+- **Modes written with the commands directly**
+  (`execute!(out, EnableMouseCapture)`) aren't recorded, so `restore` doesn't
+  turn them off. A port that wants them restored moves them to `enable`.
+- **`restore_on_panic` writes to the terminal, not to `out`**, so bytes the
+  program queued in a buffered writer before the panic may arrive after the
+  restore, or never.
+
 ## Decided in phase 02, where the bytes are ambiguous
 
 So the next surprise is cheap; each is a decoder choice, not a bug.
