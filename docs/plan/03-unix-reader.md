@@ -10,6 +10,15 @@
 - **Reading**: drain what is available into the decoder, deliver events a read
   at a time; never block mid-sequence. The Escape timeout from 02 is applied
   here.
+- **Poll semantics hjkl's loop relies on**: timers (which-key, chord timeout,
+  hover, an idle hint) run off `poll(timeout)`, so a timed-out poll returns
+  false promptly, and `EINTR` is retried, never surfaced as an error. hjkl
+  drains with `while poll(Duration::ZERO)` after each event, so a zero-timeout
+  poll is cheap (no syscall when events are already decoded) and never reports
+  an event while only part of an escape sequence has arrived.
+- **A cross-thread waker**: the self-pipe exposed as a handle another thread can
+  wake the loop with (hjkl's LSP and file-watch workers), with its own event,
+  instead of the loop polling on a timeout to notice them.
 - **Async** (feature-gated, runtime-neutral): a `Stream` of events over the
   non-blocking fd. hjkl does not need it today; the shape is an open question
   in 01.

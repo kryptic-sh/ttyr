@@ -80,17 +80,35 @@ input (decided by the owner, 2026-11-09, to replace it entirely):
 - Name `ttyr`, in the kryptic-sh org (owner, 2026-11-09).
 - A full replacement, output and a ratatui backend included (owner, 2026-11-09).
 - MIT, edition 2024, MSRV 1.95, the org's shared clippy lint set, as vt1k.
+- **API shape: crossterm's names where the meaning is identical, new names where
+  it moves** (agreed with hjkl's session, 2026-11-09). A field that keeps its
+  name but changes meaning is the trap: crossterm's `KeyEvent.code` under kitty
+  flag 4 is the shifted character with Shift cleared, kitty's key is the
+  unshifted one, so a ttyr `code` would leave every ported
+  `match code { Char('A') => … }` compiling and silently not matching.
+  - Same names, same meaning: `Event` and its `Key`, `Mouse`, `Resize`, `Paste`,
+    `FocusGained`, `FocusLost`; `KeyCode`'s variants;
+    `KeyModifiers::{SHIFT, CONTROL, ALT}` (bitflags, crossterm's const names);
+    `KeyEventKind`; `MouseEvent`, `MouseEventKind`, `MouseButton`; `poll`,
+    `read`, `size`; `execute!`, `queue!`; `Clear`, `SetCursorStyle`,
+    `EnterAlternateScreen` and the other commands.
+  - New names where the meaning moves: `KeyEvent` has no `code`; it has `key`
+    (the unshifted key the terminal reported), `shifted`, `base_layout` and
+    `text` (each an `Option`), so a port fails to compile at every `.code` and
+    each site chooses the raw key or 02's `logical_char()` on purpose.
+  - `KeyEvent` and `Event` are `#[non_exhaustive]`, built with
+    `KeyEvent::new(key, modifiers)` and builder methods for the optional fields,
+    so a later field is not a break; `KeyEvent { key, modifiers, .. }` still
+    matches.
+  - Super, Hyper, Meta and the lock states are added to `KeyModifiers` (or as
+    separate fields, to settle in 02).
 
 ## Open questions
 
-- **API shape.** Keep crossterm's names where they fit (`Event`, `KeyEvent`,
-  `KeyCode`, `poll`, `read`, `execute!`) so ports are mostly a path change, or
-  design fresh. Leaning: crossterm's names for the shared surface, new types
-  only where crossterm's cannot carry what the protocol reports.
 - **Async.** Which runtime-neutral shape (a `Stream` over a non-blocking fd) and
   behind which feature, given hjkl does not need it today.
-- **hjkl-kitty.** Whether it survives or its push/pop moves into ttyr (hjkl's
-  session's question, open until ttyr's API exists).
+- **hjkl-kitty**: settled with hjkl's session (2026-11-09). Its push/pop moves
+  into 04 and its normalising into 02's helpers, after which it is deleted.
 
 ## Non-goals
 

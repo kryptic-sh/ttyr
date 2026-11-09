@@ -4,8 +4,11 @@ ttyr is kryptic-sh's replacement for crossterm: terminal input, output and raw
 mode for Rust, with the full kitty keyboard protocol and a ratatui backend,
 shared by tmxr, hjkl and the other house projects.
 
-Phases are numbered in build order. The input half (02, 03) comes first: tmxr
-and hjkl are both blocked on it.
+Phases are numbered in build order. The input half (02, 03) comes first: it
+unblocks tmxr's client on Unix (tmxr ships on Windows too, so it leaves
+crossterm only after 07). hjkl ships on Windows and relies on the console's key
+releases, so its port also waits on 07 (Windows input and raw mode), besides 04
+and 06.
 
 | #   | Phase                                                | Covers                                                                    | Status  |
 | --- | ---------------------------------------------------- | ------------------------------------------------------------------------- | ------- |

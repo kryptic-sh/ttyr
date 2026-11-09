@@ -12,3 +12,9 @@ crossterm backend.
   output is right, so switching backends changes nothing on screen; test that by
   rendering the same buffers through both.
 - Cell diffing stays ratatui's; the backend only writes.
+- **Commands between frames**: hjkl runs
+  `execute!(terminal.backend_mut(), SetCursorStyle::…)` from its event loop
+  (cursor shape per mode), which works because `CrosstermBackend` implements
+  `io::Write`. ttyr's backend implements `io::Write` too, so 05's commands go
+  through it, in order with what it draws.
+- Versions: ratatui 0.30 (hjkl's), ratatui-core 0.1.

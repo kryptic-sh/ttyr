@@ -25,6 +25,24 @@ be tested directly.
   fork).
 - `serde` support behind a feature (tmxr sends events between processes).
 
+## Helpers for the key that was meant
+
+The raw event stays lossless; these are opt-in views on it, so tmxr, hjkl and
+the rest share one rule instead of each writing its own (both wrote one and both
+got Alt+Shift+a wrong as M-a, 2026-11).
+
+- **`logical_char()`** (name to settle): the associated text if the terminal
+  sent it; else the shifted key where Shift was held and the terminal reported
+  it (kitty flag 4); else, from a terminal that reported only the unshifted key
+  (kitty flag 1, xterm, legacy), the uppercase of an ASCII letter. Shift is
+  cleared only where the returned character already carries it; otherwise it
+  stays the only record that Shift was held (Alt+Shift+1 under flag 1).
+- **Legacy aliases** (what `hjkl_kitty::normalize_legacy` does today): Ctrl+[ as
+  Esc, Ctrl+I as Tab, Ctrl+M as Enter, Ctrl+H as Backspace from terminals that
+  send ^H for it. Correct only if the event's encoding field is: under kitty
+  flag 1 those are distinct keys and must stay so.
+- Tests cover each rule per encoding, including the M-A case from each.
+
 ## The decoder
 
 - **kitty `CSI … u`**, every flag: 1 disambiguate, 2 event types, 4 alternate
