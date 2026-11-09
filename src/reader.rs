@@ -169,9 +169,9 @@ impl Reader {
     /// Reads the answers to queries written before: until the answer to
     /// `RequestPrimaryDeviceAttributes` (DA1), which every terminal answers
     /// and in order, so write it last; or until `timeout` passes, for a
-    /// terminal that does not answer it. Every other event read meanwhile
-    /// (keys typed, a resize, a wake) is kept, in order, in
-    /// [`Answers::events`].
+    /// terminal that does not answer it. Every event read meanwhile is kept
+    /// in [`Answers::events`] in the order it came, the reports among keys
+    /// typed, a resize or a wake.
     pub fn collect_answers(&mut self, timeout: Duration) -> io::Result<Answers> {
         let deadline = Instant::now().checked_add(timeout);
         let mut answers = Answers::default();
@@ -179,14 +179,11 @@ impl Reader {
             let Some(event) = self.queue.events.pop_front() else {
                 continue;
             };
-            match event {
-                Event::Report(report @ Report::PrimaryDeviceAttributes(_)) => {
-                    answers.reports.push(report);
-                    answers.complete = true;
-                    break;
-                }
-                Event::Report(report) => answers.reports.push(report),
-                event => answers.events.push(event),
+            let da1 = matches!(event, Event::Report(Report::PrimaryDeviceAttributes(_)));
+            answers.events.push(event);
+            if da1 {
+                answers.complete = true;
+                break;
             }
         }
         Ok(answers)
@@ -229,13 +226,29 @@ impl Reader {
 /// What [`Reader::collect_answers`] read.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct Answers {
-    /// The reports, in the order they came; DA1's last when it came.
-    pub reports: Vec<Report>,
-    /// Every other event read meanwhile, in order.
+    /// Every event, in the order it came: the reports, DA1's last when it
+    /// came, among anything else read meanwhile.
     pub events: Vec<Event>,
     /// Whether DA1's answer came: if not, the time ran out first, and the
     /// answers still to come arrive later as events.
     pub complete: bool,
+}
+
+impl Answers {
+    /// The reports, in the order they came.
+    pub fn reports(&self) -> impl Iterator<Item = &Report> {
+        self.events.iter().filter_map(|event| match event {
+            Event::Report(report) => Some(report),
+            _ => None,
+        })
+    }
+
+    /// The events that are not reports, in the order they came.
+    pub fn others(&self) -> impl Iterator<Item = &Event> {
+        self.events
+            .iter()
+            .filter(|event| !matches!(event, Event::Report(_)))
+    }
 }
 
 /// Wakes a [`Reader`] from another thread: its wait ends and it delivers

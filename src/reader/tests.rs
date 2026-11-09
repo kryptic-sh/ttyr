@@ -245,12 +245,23 @@ fn collect_answers_keeps_the_keys_typed_meanwhile_and_stops_at_da1() {
         .unwrap();
     let answers = reader.collect_answers(LONG).unwrap();
     assert!(answers.complete);
+    // The reports among the keys, in the order they came.
+    let in_order: Vec<_> = answers
+        .events
+        .iter()
+        .filter(|e| **e != Event::Wake)
+        .cloned()
+        .collect();
     assert_eq!(
-        answers.reports,
+        in_order,
         [
-            Report::KeyboardEnhancementFlags(KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES),
-            Report::TerminalVersion("kitty(0.39.1)".into()),
-            Report::PrimaryDeviceAttributes(vec![62, 22]),
+            Event::Report(Report::KeyboardEnhancementFlags(
+                KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES
+            )),
+            key(KeyCode::Char('a')),
+            Event::Report(Report::TerminalVersion("kitty(0.39.1)".into())),
+            key(KeyCode::Char('b')),
+            Event::Report(Report::PrimaryDeviceAttributes(vec![62, 22])),
         ]
     );
     // The keys typed between the answers, in order; the wake, which came
@@ -268,10 +279,12 @@ fn collect_answers_keeps_the_keys_typed_meanwhile_and_stops_at_da1() {
             .cloned()
             .collect()
     };
+    let others: Vec<_> = answers.others().cloned().collect();
     assert_eq!(
-        keys(&answers.events),
+        keys(&others),
         [key(KeyCode::Char('a')), key(KeyCode::Char('b'))]
     );
+    assert_eq!(answers.reports().count(), 3);
     // What came after DA1 is left to read.
     assert_eq!(keys(&rest), [key(KeyCode::Char('z'))]);
 }
@@ -287,15 +300,16 @@ fn collect_answers_gives_up_at_the_timeout() {
     let answers = reader.collect_answers(timeout).unwrap();
     assert!(start.elapsed() >= timeout && start.elapsed() < LONG);
     assert!(!answers.complete);
+    let mode = Report::Mode {
+        mode: 2026,
+        private: true,
+        setting: ModeSetting::Reset,
+    };
+    assert_eq!(answers.reports().collect::<Vec<_>>(), [&mode]);
     assert_eq!(
-        answers.reports,
-        [Report::Mode {
-            mode: 2026,
-            private: true,
-            setting: ModeSetting::Reset,
-        }]
+        answers.events,
+        [Event::Report(mode.clone()), key(KeyCode::Char('q'))]
     );
-    assert_eq!(answers.events, [key(KeyCode::Char('q'))]);
 }
 
 #[test]
@@ -314,6 +328,11 @@ fn collect_answers_returns_a_wake_that_comes_while_it_waits() {
     let answers = reader.collect_answers(LONG).unwrap();
     let _term = answering.join().unwrap();
     assert!(answers.complete);
-    assert_eq!(answers.events, [Event::Wake]);
-    assert_eq!(answers.reports, [Report::PrimaryDeviceAttributes(vec![62])]);
+    assert_eq!(
+        answers.events,
+        [
+            Event::Wake,
+            Event::Report(Report::PrimaryDeviceAttributes(vec![62])),
+        ]
+    );
 }

@@ -69,10 +69,11 @@ All notable changes to this project are documented here. The format follows
   (DA2), `RequestTerminalVersion` (XTVERSION), `RequestMode` (DECRQM),
   `RequestTerminalColor` (OSC 10/11/12/4) and `RequestTextAreaPixels`
   (`CSI 14 t`).
-- `Reader::collect_answers(timeout)`: reads the answers to queries until DA1's
-  answer or the timeout. It returns them as `Answers`, with every other event
-  read meanwhile (keys typed, a resize, a wake) kept in order, and whether DA1's
-  answer came.
+- `Reader::collect_answers(timeout)` reads the answers to queries, until DA1's
+  answer or the timeout. It returns them as `Answers`: every event read
+  meanwhile in the order it came (keys typed, a resize and a wake among the
+  reports), with `reports()` and `others()` to take either apart, and whether
+  DA1's answer came.
 - `ttyr::cursor`: crossterm's cursor commands (`MoveTo`, `MoveToColumn`,
   `MoveToRow`, `MoveUp`/`Down`/`Left`/`Right`, `MoveToNextLine`,
   `MoveToPreviousLine`, `SavePosition`, `RestorePosition`, `Hide`, `Show`,
