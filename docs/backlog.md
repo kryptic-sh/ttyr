@@ -2,8 +2,8 @@
 
 What is not done yet, and why.
 
-- **Phases 04 to 08 are not finished.** `ttyr::event` (the event types and the
-  `Decoder`), `ttyr::reader` and `ttyr::terminal`'s size and raw mode (Unix) are
+- **Phases 05 to 08 are not finished.** `ttyr::event`, `ttyr::command`,
+  `ttyr::reader` and `ttyr::terminal` (the size, raw mode and guard on Unix) are
   all there is; the rest is planned in `docs/plan/`.
 - **The crate name is not reserved on crates.io.** `ttyr` was free on
   2026-11-09; it is taken when the first version is published by the tag
@@ -53,7 +53,17 @@ What is not done yet, and why.
   `a_paste_waits_past_a_flush_for_its_end` then hangs rather than fails (checked
   by removing the guard).
 
-## Left from phase 04 so far (terminal modes)
+## Left from phase 04 (terminal modes)
+
+- **No helper that collects the answers to queries.** The query commands
+  (`RequestKeyboardEnhancementFlags`, `RequestPrimaryDeviceAttributes`, …) only
+  write the question; the answers arrive through `Reader` as `Event::Report`.
+  Phase 04 planned a small helper that reads until DA1's answer or the caller's
+  timeout, keeping the other events read meanwhile. Neither consumer has asked
+  for it (tmxr keeps its own probe for now); add it when one does.
+- **No SGR-pixels mouse (1016) in `SetMouseTracking` or `Mode::Mouse`.** Nothing
+  asks for it (tmxr said so). The decoder reads its reports as cells already
+  (see Decided in phase 02).
 
 - **`suspend` itself has no test**: raising `SIGTSTP` would stop the test
   process. `suspend_with`, which it is built on, is tested; `suspend` adds only

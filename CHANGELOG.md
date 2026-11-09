@@ -62,4 +62,11 @@ All notable changes to this project are documented here. The format follows
     the hook that was there before.
   - `suspend_with(out, f)` gives the terminal back while `f` runs, then takes it
     again; `suspend` stops the process with `SIGTSTP` in between.
+- Capability queries as commands in `ttyr::terminal`: they write the question
+  and never wait for the answer, which arrives through the reader as
+  `Event::Report`. `RequestKeyboardEnhancementFlags` (`CSI ? u`),
+  `RequestPrimaryDeviceAttributes` (DA1), `RequestSecondaryDeviceAttributes`
+  (DA2), `RequestTerminalVersion` (XTVERSION), `RequestMode` (DECRQM),
+  `RequestTerminalColor` (OSC 10/11/12/4) and `RequestTextAreaPixels`
+  (`CSI 14 t`).
 - A `serde` feature deriving `Serialize` and `Deserialize` on every event type.

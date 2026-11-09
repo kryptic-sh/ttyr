@@ -16,7 +16,7 @@ and 06.
 | 01  | [01-overview.md](01-overview.md)               | Why ttyr exists, its consumers, principles, decisions, non-goals          | —       |
 | 02  | Events and decoder                             | Event types; the decoder for kitty, xterm, legacy, mouse and reports      | done    |
 | 03  | Unix reader                                    | Reading a Unix tty: poll/read, timeouts, SIGWINCH, async                  | done    |
-| 04  | [04-terminal-modes.md](04-terminal-modes.md)   | Raw mode, size, the modes a program turns on, restore from a panic        | planned |
+| 04  | Terminal modes                                 | Raw mode, size, the modes a program turns on, restore from a panic        | done    |
 | 05  | [05-output.md](05-output.md)                   | Commands: cursor, clear, styles and colours, queued and flushed           | planned |
 | 06  | [06-ratatui-backend.md](06-ratatui-backend.md) | `ratatui_core::backend::Backend` on ttyr                                  | planned |
 | 07  | [07-windows.md](07-windows.md)                 | The Windows console: input records, VT input, raw mode, size              | planned |

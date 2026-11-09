@@ -1,6 +1,6 @@
 # 05 — Output
 
-**Landed early (with 04's modes):** the `Command` trait, `QueueableCommand`,
+**Landed early (with 04):** the `Command` trait, `QueueableCommand`,
 `ExecutableCommand`, `queue!` and `execute!` (`ttyr::command`).
 
 What ratatui's backend and the apps need, written as ANSI/xterm sequences:

@@ -5,8 +5,8 @@
 //! from the bytes a terminal sends to events; [`command`], crossterm's
 //! `Command` with `queue!` and `execute!`; [`terminal`], the modes a program
 //! turns on as commands, and on Unix the terminal's size, raw mode and the
-//! guard that restores it; and on Unix `reader`, which reads events from a
-//! tty. Capability queries, output, the ratatui backend and Windows are
+//! guard that restores it, and the capability queries; and on Unix `reader`,
+//! which reads events from a tty. Output, the ratatui backend and Windows are
 //! planned in `docs/plan/` in the repository.
 //!
 //! [`Decoder`]: event::Decoder
