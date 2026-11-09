@@ -1,0 +1,20 @@
+# 04 — Terminal modes
+
+- **Raw mode** on and off (termios on Unix; Windows in 07), restoring exactly
+  the attributes found.
+- **Size**: columns and rows, and pixel size where the terminal reports it
+  (`TIOCGWINSZ`'s pixel fields, `CSI 14 t`).
+- **Modes a program turns on**, each with its off: the alternate screen, mouse
+  capture (1000/1002/1003 with 1006, optional 1016), bracketed paste, focus
+  reporting, kitty keyboard flags (push `CSI > f u`, pop `CSI < n u`, set
+  `CSI = f ; mode u`), xterm modifyOtherKeys (`CSI > 4 ; 2 m` / `CSI > 4 m`),
+  the colour-scheme reports (2031), synchronized output (2026).
+- **Capability queries without blocking**: helpers that write the query (kitty
+  `CSI ? u` followed by DA1, DECRQM, XTVERSION, colour queries); the replies
+  come back through 02's report events, and a small helper can collect them with
+  the caller's timeout.
+- **A guard** that records what it turned on and turns it off in reverse on
+  drop, from a panic hook, and before a suspend (`SIGTSTP`) with re-entry after
+  `SIGCONT`. Idempotent: running it twice does nothing the second time.
+- **Tests**: on a pty, each mode's bytes on and off; the guard's restore after a
+  panic in a child process.
