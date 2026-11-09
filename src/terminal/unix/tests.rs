@@ -4,7 +4,7 @@ use rustix::termios::{LocalModes, Termios, Winsize, tcgetattr, tcsetwinsize};
 
 use super::WindowSize;
 use super::{disable_raw_mode, enable_raw_mode_on, is_raw_mode_enabled, window_size_of};
-use crate::test_pty::{pty, terminal_state as serial};
+use crate::test_pty::{local_modes, pty, terminal_state as serial};
 
 /// The attributes raw mode changes, comparable.
 fn modes(termios: &Termios) -> impl PartialEq + std::fmt::Debug {
@@ -12,7 +12,7 @@ fn modes(termios: &Termios) -> impl PartialEq + std::fmt::Debug {
         termios.input_modes,
         termios.output_modes,
         termios.control_modes,
-        termios.local_modes,
+        local_modes(termios),
     )
 }
 

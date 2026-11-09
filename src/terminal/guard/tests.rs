@@ -13,7 +13,7 @@ use super::{Mode, disable, enable, restore, restore_on_panic, suspend_with};
 use crate::event::KeyboardEnhancementFlags as Flags;
 use crate::terminal::MouseTracking;
 use crate::terminal::unix::{enable_raw_mode_on, is_raw_mode_enabled};
-use crate::test_pty::{pty, terminal_state};
+use crate::test_pty::{local_modes, pty, terminal_state};
 
 const ANY: Mode = Mode::Mouse {
     tracking: MouseTracking::Any,
@@ -172,7 +172,7 @@ fn a_panic_restores_the_terminal() {
     let expected = "\x1B[?1004l\x1B[?2004l\x1B[?25h";
     assert_eq!(read_back(&term, expected.len()), expected);
     let after = tcgetattr(&tty).unwrap();
-    assert_eq!(after.local_modes, cooked.local_modes);
+    assert_eq!(local_modes(&after), local_modes(&cooked));
     assert!(!is_raw_mode_enabled());
     // Nothing left to restore.
     let mut out = Vec::new();

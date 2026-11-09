@@ -7,7 +7,7 @@ use std::sync::{Mutex, MutexGuard, PoisonError};
 
 use rustix::fs::{Mode, OFlags};
 use rustix::pty::{OpenptFlags, grantpt, openpt, ptsname, unlockpt};
-use rustix::termios::{OptionalActions, tcgetattr, tcsetattr};
+use rustix::termios::{LocalModes, OptionalActions, Termios, tcgetattr, tcsetattr};
 
 /// A pty with the attributes a new terminal has: the terminal's side, and
 /// the program's.
@@ -39,4 +39,11 @@ pub fn raw_pty() -> (File, OwnedFd) {
 pub fn terminal_state() -> MutexGuard<'static, ()> {
     static STATE: Mutex<()> = Mutex::new(());
     STATE.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
+/// The local modes a program sets, without `PENDIN`: the BSDs and macOS set
+/// that bit themselves when a tty goes back to canonical mode ("input to
+/// retype"), so it says what the kernel did, not what was set.
+pub fn local_modes(termios: &Termios) -> LocalModes {
+    termios.local_modes - LocalModes::PENDIN
 }
