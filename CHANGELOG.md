@@ -37,4 +37,18 @@ All notable changes to this project are documented here. The format follows
   `is_raw_mode_enabled`, crossterm's names. Raw mode keeps the attributes from
   before and puts exactly those back; turning it on or off twice does nothing
   the second time.
+- `ttyr::command`: crossterm's `Command` trait, `QueueableCommand`,
+  `ExecutableCommand` and the `queue!` and `execute!` macros, writing commands
+  into any `io::Write`.
+- The terminal modes as commands in `ttyr::terminal`, under crossterm's names:
+  `EnterAlternateScreen`, `EnableMouseCapture`, `EnableBracketedPaste`,
+  `EnableFocusChange`, `PushKeyboardEnhancementFlags`,
+  `PopKeyboardEnhancementFlags`, `BeginSynchronizedUpdate` and their offs. New
+  ones as well: `SetKeyboardEnhancementFlags` (kitty's set,
+  `CSI = flags ; 1 u`), `SetMouseTracking` (one level of mouse reports: 1000,
+  1002 or 1003, with or without 1006), `Enable`/`DisableModifyOtherKeys`,
+  `Enable`/ `DisableColorSchemeReports` (2031) and `RequestColorScheme`.
+  `EnableMouseCapture` turns on 1000, 1002, 1003 and 1006, but not crossterm's
+  urxvt 1015: a terminal without SGR reports falls back to X10's form, which the
+  decoder reads.
 - A `serde` feature deriving `Serialize` and `Deserialize` on every event type.

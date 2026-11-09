@@ -2,7 +2,9 @@
 
 **In progress.** Landed: raw mode and size (`ttyr::terminal`: `size`,
 `window_size`, `enable_raw_mode`, `disable_raw_mode`, `is_raw_mode_enabled`,
-crossterm's names; Unix; Windows in 07). Still to do:
+crossterm's names; Unix; Windows in 07); each mode's on and off as a command,
+with 05's `Command` trait and `queue!`/`execute!` brought forward for them.
+Still to do:
 
 - **Modes a program turns on**, each with its off: the alternate screen, mouse
   capture (1000/1002/1003 with 1006, optional 1016), bracketed paste, focus

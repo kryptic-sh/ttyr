@@ -1,9 +1,10 @@
 # 05 — Output
 
+**Landed early (with 04's modes):** the `Command` trait, `QueueableCommand`,
+`ExecutableCommand`, `queue!` and `execute!` (`ttyr::command`).
+
 What ratatui's backend and the apps need, written as ANSI/xterm sequences:
 
-- **A command trait** writing into any `io::Write`, with `queue!`/`execute!`
-  macros (crossterm's shape, so ports keep their call sites).
 - **Cursor**: move to, show, hide, save, restore, position query (its reply is a
   02 event), cursor style (DECSCUSR) and colour (OSC 12).
 - **Clear**: all, from the cursor down and up, the line, to the line's end and
