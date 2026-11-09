@@ -13,6 +13,8 @@ keywords = ["terminal", "tty", "kitty", "keyboard", "tui"]
 categories = ["command-line-interface"]
 
 [dependencies]
+bitflags = "2.13.2"
+serde = { version = "1.0.229", features = ["derive"], optional = true }
 
 [lints.clippy]
 or_fun_call = "deny"
@@ -23,3 +25,6 @@ manual_let_else = "warn"
 map_unwrap_or = "warn"
 use_self = "warn"
 redundant_pub_crate = "warn"
+
+[features]
+serde = ["dep:serde", "bitflags/serde"]

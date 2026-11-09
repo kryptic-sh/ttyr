@@ -100,15 +100,27 @@ input (decided by the owner, 2026-11-09, to replace it entirely):
     `KeyEvent::new(key, modifiers)` and builder methods for the optional fields,
     so a later field is not a break; `KeyEvent { key, modifiers, .. }` still
     matches.
-  - Super, Hyper, Meta and the lock states are added to `KeyModifiers` (or as
-    separate fields, to settle in 02).
+  - Super, Hyper and Meta are in `KeyModifiers`; Caps Lock and Num Lock are in
+    `KeyEventState` beside `KEYPAD`, never in the modifiers, so a keymap's
+    `modifiers == CONTROL` holds with Caps Lock on (agreed with hjkl's session,
+    2026-11-09).
+  - `KeyEvent` is `Clone` but not `Copy`: kitty's associated text is a `String`.
+    hjkl checked its tree and does not need `Copy` (2026-11-09).
+  - The decoder is public (`ttyr::event::Decoder`, bytes in, events out): tmxr
+    feeds it captured bytes in tests and reads its attach probe's answers with
+    it. A flush (`Decoder::flush_event`) is the caller's, so "no escape timeout"
+    works: tmxr's client sends a lone Escape at once and applies `escape-time`
+    in its server (tmxr's session, 2026-11-09).
+  - `serde` is a plain derive: tmxr versions its own protocol and builds both
+    ends from one tree, so ttyr promises no stable wire shape.
 
 ## Open questions
 
 - **Async.** Which runtime-neutral shape (a `Stream` over a non-blocking fd) and
   behind which feature, given hjkl does not need it today.
 - **hjkl-kitty**: settled with hjkl's session (2026-11-09). Its push/pop moves
-  into 04 and its normalising into 02's helpers, after which it is deleted.
+  into 04 and its normalising into `KeyEvent::normalize_legacy` (02, done),
+  after which it is deleted.
 
 ## Non-goals
 

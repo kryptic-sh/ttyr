@@ -8,8 +8,10 @@
   wake-up) interrupts a wait. A SIGWINCH that arrives with input keeps both
   (tmxr's fork).
 - **Reading**: drain what is available into the decoder, deliver events a read
-  at a time; never block mid-sequence. The Escape timeout from 02 is applied
-  here.
+  at a time; never block mid-sequence. The Escape timeout is applied here: the
+  reader calls `Decoder::flush_event` once the timeout passes with nothing more
+  read, or as soon as nothing more is waiting when the timeout is none (tmxr's
+  client, which applies `escape-time` in its server).
 - **Poll semantics hjkl's loop relies on**: timers (which-key, chord timeout,
   hover, an idle hint) run off `poll(timeout)`, so a timed-out poll returns
   false promptly, and `EINTR` is retried, never surfaced as an error. hjkl

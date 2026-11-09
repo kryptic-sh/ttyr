@@ -6,8 +6,9 @@ by [tmxr](https://github.com/kryptic-sh/tmxr),
 [hjkl](https://github.com/kryptic-sh/hjkl) and the other kryptic-sh terminal
 apps.
 
-**Status: planned, nothing implemented yet.** The plan is in
-[docs/plan](docs/plan/00-index.md).
+**Status: in progress.** The event types and the byte decoder (`ttyr::event`)
+are implemented; reading a tty, raw mode, output and the ratatui backend are
+planned in [docs/plan](docs/plan/00-index.md).
 
 ## License
 
