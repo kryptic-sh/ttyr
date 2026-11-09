@@ -108,3 +108,21 @@ macro_rules! execute {
         }
     }};
 }
+
+/// Defines unit commands that each write one fixed sequence:
+/// `fixed_commands! { /// Doc. Name => "bytes"; }`.
+macro_rules! fixed_commands {
+    ($($(#[$doc:meta])* $name:ident => $bytes:literal;)*) => {$(
+        $(#[$doc])*
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+        pub struct $name;
+
+        impl $crate::command::Command for $name {
+            fn write_ansi(&self, f: &mut impl ::std::fmt::Write) -> ::std::fmt::Result {
+                f.write_str($bytes)
+            }
+        }
+    )*};
+}
+
+pub(crate) use fixed_commands;

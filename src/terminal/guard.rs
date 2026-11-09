@@ -25,13 +25,11 @@ use super::unix::{
     enable_raw_mode_on, is_raw_mode_enabled, open_tty, take_raw, take_raw_after_panic,
 };
 use crate::command::Command;
+use crate::cursor::Show;
 use crate::event::KeyboardEnhancementFlags;
 
 #[cfg(test)]
 mod tests;
-
-/// Shows the cursor (DECTCEM), which a program that drew may have hidden.
-const SHOW_CURSOR: &str = "\x1B[?25h";
 
 /// The modes on, in the order they were turned on.
 static ON: Mutex<Vec<Mode>> = Mutex::new(Vec::new());
@@ -114,7 +112,8 @@ fn offs(modes: &[Mode]) -> io::Result<String> {
     for mode in modes.iter().rev() {
         mode.write_off(&mut bytes)?;
     }
-    bytes.push_str(SHOW_CURSOR);
+    // A program that drew may have hidden it.
+    push(&mut bytes, Show)?;
     Ok(bytes)
 }
 
@@ -242,6 +241,7 @@ fn restore_after_panic() {
         },
     };
     let mut out = File::from(tty);
-    let bytes = offs(&modes).unwrap_or_else(|_| SHOW_CURSOR.to_owned());
-    let _ = out.write_all(bytes.as_bytes());
+    if let Ok(bytes) = offs(&modes) {
+        let _ = out.write_all(bytes.as_bytes());
+    }
 }

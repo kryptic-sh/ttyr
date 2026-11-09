@@ -3,26 +3,11 @@
 
 use std::fmt;
 
-use crate::command::Command;
+use crate::command::{Command, fixed_commands};
 use crate::event::KeyboardEnhancementFlags;
 
 #[cfg(test)]
 mod tests;
-
-/// Unit commands that each write one fixed sequence.
-macro_rules! fixed_commands {
-    ($($(#[$doc:meta])* $name:ident => $bytes:literal;)*) => {$(
-        $(#[$doc])*
-        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-        pub struct $name;
-
-        impl Command for $name {
-            fn write_ansi(&self, f: &mut impl fmt::Write) -> fmt::Result {
-                f.write_str($bytes)
-            }
-        }
-    )*};
-}
 
 fixed_commands! {
     /// Switches to the alternate screen (mode 1049), saving the cursor.

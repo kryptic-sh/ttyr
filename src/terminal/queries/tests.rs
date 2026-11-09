@@ -2,12 +2,7 @@
 
 use super::*;
 use crate::event::{Decoder, Event, KeyboardEnhancementFlags, ModeSetting, Report, TerminalColor};
-
-fn bytes(command: impl Command) -> String {
-    let mut out = String::new();
-    command.write_ansi(&mut out).unwrap();
-    out
-}
+use crate::test_bytes::bytes;
 
 fn report(answer: &[u8]) -> Report {
     let mut decoder = Decoder::new();

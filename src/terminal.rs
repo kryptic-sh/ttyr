@@ -13,6 +13,7 @@ use std::sync::{Mutex, MutexGuard, TryLockError};
 mod guard;
 mod modes;
 mod queries;
+mod screen;
 #[cfg(unix)]
 mod unix;
 
@@ -20,6 +21,7 @@ mod unix;
 pub use guard::{Mode, disable, enable, restore, restore_on_panic, suspend, suspend_with};
 pub use modes::*;
 pub use queries::*;
+pub use screen::*;
 #[cfg(unix)]
 pub use unix::{
     WindowSize, disable_raw_mode, enable_raw_mode, is_raw_mode_enabled, size, window_size,

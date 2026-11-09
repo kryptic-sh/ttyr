@@ -2,9 +2,8 @@
 
 What is not done yet, and why.
 
-- **Phases 05 to 08 are not finished.** `ttyr::event`, `ttyr::command`,
-  `ttyr::reader` and `ttyr::terminal` (the size, raw mode and guard on Unix) are
-  all there is; the rest is planned in `docs/plan/`.
+- **Phases 06 to 08 are not done**: the ratatui backend, Windows, and moving the
+  consumers off crossterm, planned in `docs/plan/`.
 - **The crate name is not reserved on crates.io.** `ttyr` was free on
   2026-11-09; it is taken when the first version is published by the tag
   pipeline in `.github/workflows/ci.yml`.
@@ -52,6 +51,19 @@ What is not done yet, and why.
   and again, never reaching the deadline:
   `a_paste_waits_past_a_flush_for_its_end` then hangs rather than fails (checked
   by removing the guard).
+
+## Left from phase 05 (output)
+
+- **No hyperlink (OSC 8) or clipboard (OSC 52) commands.** Neither hjkl nor tmxr
+  writes them through crossterm (hjkl's `hjkl-clipboard` has its own OSC 52
+  code), and OSC 52 needs base64, a new dependency or a hand-written encoder.
+  Add them when a consumer asks.
+- **No `ContentStyle`, `Stylize` or `Attributes` set** (crossterm's styled
+  text). Nothing in hjkl or tmxr uses them directly; 06's backend decides
+  whether it needs an attribute set.
+- **`NO_COLOR` is not read**, where crossterm's colour commands write nothing
+  when it is set: whether to colour is the program's choice. A port that relied
+  on crossterm for it checks `NO_COLOR` itself.
 
 ## Left from phase 04 (terminal modes)
 

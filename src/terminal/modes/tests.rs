@@ -2,12 +2,7 @@
 //! document them.
 
 use super::*;
-
-fn bytes(command: impl Command) -> String {
-    let mut out = String::new();
-    command.write_ansi(&mut out).unwrap();
-    out
-}
+use crate::test_bytes::bytes;
 
 #[test]
 fn each_mode_writes_its_sequence() {

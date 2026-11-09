@@ -73,4 +73,18 @@ All notable changes to this project are documented here. The format follows
   answer or the timeout. It returns them as `Answers`, with every other event
   read meanwhile (keys typed, a resize, a wake) kept in order, and whether DA1's
   answer came.
+- `ttyr::cursor`: crossterm's cursor commands (`MoveTo`, `MoveToColumn`,
+  `MoveToRow`, `MoveUp`/`Down`/`Left`/`Right`, `MoveToNextLine`,
+  `MoveToPreviousLine`, `SavePosition`, `RestorePosition`, `Hide`, `Show`,
+  `EnableBlinking`, `DisableBlinking`, `SetCursorStyle`), plus `SetCursorColor`
+  and `ResetCursorColor` (OSC 12/112) and `RequestCursorPosition`, whose answer
+  arrives as an event rather than being waited for.
+- `ttyr::style`: crossterm's `Color`, `Colors`, `Attribute` (with the curly,
+  dotted and dashed underlines and overline), `SetForegroundColor`,
+  `SetBackgroundColor`, `SetUnderlineColor`, `SetColors`, `SetAttribute`,
+  `ResetColor` and `Print`, writing crossterm's bytes. `NO_COLOR` is the
+  program's to honour.
+- Screen commands in `ttyr::terminal`: `Clear` (crossterm's `ClearType`s, plus
+  `FromLineStart`), `ScrollUp`, `ScrollDown`, `SetScrollRegion`,
+  `ResetScrollRegion`, `DisableLineWrap`, `EnableLineWrap` and `SetTitle`.
 - A `serde` feature deriving `Serialize` and `Deserialize` on every event type.

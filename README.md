@@ -7,11 +7,11 @@ by [tmxr](https://github.com/kryptic-sh/tmxr),
 apps.
 
 **Status: in progress.** Implemented: the event types and the byte decoder
-(`ttyr::event`), reading a Unix tty (`ttyr::reader`), the terminal's size, raw
-mode, modes, restore guard and capability queries (`ttyr::terminal`, Unix), and
-crossterm's `Command` with `queue!` and `execute!` (`ttyr::command`). Output,
-the ratatui backend and Windows are planned in
-[docs/plan](docs/plan/00-index.md).
+(`ttyr::event`), reading a Unix tty (`ttyr::reader`), crossterm's `Command` with
+`queue!` and `execute!` (`ttyr::command`), the output commands (`ttyr::cursor`,
+`ttyr::style`, `ttyr::terminal`), and the terminal's size, raw mode, modes,
+restore guard and capability queries (`ttyr::terminal`, Unix). The ratatui
+backend and Windows are planned in [docs/plan](docs/plan/00-index.md).
 
 ## License
 
