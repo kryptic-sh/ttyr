@@ -2,9 +2,8 @@
 
 What is not done yet, and why.
 
-- **Phases 06 and 08 are not done, and 07 is not finished**: the ratatui
-  backend, moving the consumers off crossterm, and Windows on a real machine,
-  planned in `docs/plan/`.
+- **Phase 08 is not done, and 07 is not finished**: moving the consumers off
+  crossterm, and Windows on a real machine, planned in `docs/plan/`.
 - **The crate name is not reserved on crates.io.** `ttyr` was free on
   2026-11-09; it is taken when the first version is published by the tag
   pipeline in `.github/workflows/ci.yml`.
@@ -52,6 +51,31 @@ What is not done yet, and why.
   and again, never reaching the deadline:
   `a_paste_waits_past_a_flush_for_its_end` then hangs rather than fails (checked
   by removing the guard).
+
+## Left from phase 06 (ratatui backend)
+
+- **No `scrolling-regions` support.** ratatui-core puts `scroll_region_up` and
+  `scroll_region_down` behind its own `scrolling-regions` feature, and a backend
+  has to implement them once any crate in the build turns it on. hjkl uses
+  ratatui's default features, without it. Adding it takes a `scrolling-regions`
+  feature in ttyr that forwards to ratatui-core's, as ratatui-crossterm has,
+  plus the two methods on `SetScrollRegion`.
+- **`get_cursor_position` doesn't ask the terminal**: it returns where
+  `TtyrBackend` last put the cursor, one column after the start of the last cell
+  drawn (a wide cell leaves it a column short). ratatui calls it in
+  `Terminal::clear`, to put the cursor back, and for inline viewports, which
+  hjkl doesn't use. An inline viewport that needs the real position would write
+  `RequestCursorPosition` and read the answer itself.
+- **Underline colour is always on** (`ratatui-core/underline-color`, which
+  ratatui's default features turn on too), as `CrosstermBackend` has it by
+  default.
+
+## Unexplained
+
+- **One `cargo test --all-features` run failed once and did not again in 43
+  runs** (2026-11-10, load average around 12 from other sessions' builds). Which
+  test it was was not kept; the reader's pty tests wait on timing and are the
+  likeliest. Keep the failing test's name if it happens again.
 
 ## Phase 07 in progress (Windows)
 

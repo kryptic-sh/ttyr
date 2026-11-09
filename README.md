@@ -9,9 +9,10 @@ apps.
 **Status: in progress.** Implemented: the event types and the byte decoder
 (`ttyr::event`), reading a Unix tty or the Windows console (`ttyr::reader`),
 crossterm's `Command` with `queue!` and `execute!` (`ttyr::command`), the output
-commands (`ttyr::cursor`, `ttyr::style`, `ttyr::terminal`), and the terminal's
-size, raw mode, modes, restore guard and capability queries (`ttyr::terminal`).
-Windows has not run on a real machine yet, and the ratatui backend is planned in
+commands (`ttyr::cursor`, `ttyr::style`, `ttyr::terminal`), the terminal's size,
+raw mode, modes, restore guard and capability queries (`ttyr::terminal`), and a
+ratatui backend (`ttyr::backend`, with the `ratatui` feature). Windows has not
+run on a real machine yet; what is left is in
 [docs/plan](docs/plan/00-index.md).
 
 ## License

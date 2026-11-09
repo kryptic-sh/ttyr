@@ -80,6 +80,10 @@ fn write_command(out: &mut (impl io::Write + ?Sized), command: &impl Command) ->
 #[macro_export]
 macro_rules! queue {
     ($writer:expr $(, $command:expr)* $(,)?) => {{
+        // For `$writer.by_ref()` below, the method form that takes a writer
+        // by value, by `&mut`, or as a binding not declared `mut`; redundant
+        // where the caller has `Write` in scope already.
+        #[allow(unused_imports)]
         use ::std::io::Write as _;
         // A match keeps a temporary writer (`stdout()`) alive to its end.
         match $writer.by_ref() {
@@ -102,9 +106,16 @@ macro_rules! queue {
 #[macro_export]
 macro_rules! execute {
     ($writer:expr $(, $command:expr)* $(,)?) => {{
+        // For `$writer.by_ref()` below, the method form that takes a writer
+        // by value, by `&mut`, or as a binding not declared `mut`; redundant
+        // where the caller has `Write` in scope already.
+        #[allow(unused_imports)]
         use ::std::io::Write as _;
         match $writer.by_ref() {
-            writer => $crate::queue!(writer $(, $command)*).and_then(|()| writer.flush()),
+            // Named in full: a writer that is also a ratatui backend has a
+            // `flush` of its own.
+            writer => $crate::queue!(writer $(, $command)*)
+                .and_then(|()| ::std::io::Write::flush(writer)),
         }
     }};
 }

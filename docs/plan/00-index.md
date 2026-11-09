@@ -10,14 +10,14 @@ crossterm only after 07). hjkl ships on Windows and relies on the console's key
 releases, so its port also waits on 07 (Windows input and raw mode), besides 04
 and 06.
 
-| #   | Phase                                          | Covers                                                                    | Status  |
-| --- | ---------------------------------------------- | ------------------------------------------------------------------------- | ------- |
-| 00  | [00-index.md](00-index.md)                     | This list                                                                 |         |
-| 01  | [01-overview.md](01-overview.md)               | Why ttyr exists, its consumers, principles, decisions, non-goals          | —       |
-| 02  | Events and decoder                             | Event types; the decoder for kitty, xterm, legacy, mouse and reports      | done    |
-| 03  | Unix reader                                    | Reading a Unix tty: poll/read, timeouts, SIGWINCH, async                  | done    |
-| 04  | Terminal modes                                 | Raw mode, size, the modes a program turns on, restore from a panic        | done    |
-| 05  | Output                                         | Commands: cursor, clear, styles and colours, queued and flushed           | done    |
-| 06  | [06-ratatui-backend.md](06-ratatui-backend.md) | `ratatui_core::backend::Backend` on ttyr                                  | planned |
-| 07  | [07-windows.md](07-windows.md)                 | The Windows console: input records, VT input, raw mode, size              | started |
-| 08  | [08-adoption.md](08-adoption.md)               | Moving tmxr, hjkl and the rest off crossterm; retiring the crossterm fork | planned |
+| #   | Phase                            | Covers                                                                    | Status  |
+| --- | -------------------------------- | ------------------------------------------------------------------------- | ------- |
+| 00  | [00-index.md](00-index.md)       | This list                                                                 |         |
+| 01  | [01-overview.md](01-overview.md) | Why ttyr exists, its consumers, principles, decisions, non-goals          | —       |
+| 02  | Events and decoder               | Event types; the decoder for kitty, xterm, legacy, mouse and reports      | done    |
+| 03  | Unix reader                      | Reading a Unix tty: poll/read, timeouts, SIGWINCH, async                  | done    |
+| 04  | Terminal modes                   | Raw mode, size, the modes a program turns on, restore from a panic        | done    |
+| 05  | Output                           | Commands: cursor, clear, styles and colours, queued and flushed           | done    |
+| 06  | Ratatui backend                  | `ratatui_core::backend::Backend` on ttyr                                  | done    |
+| 07  | [07-windows.md](07-windows.md)   | The Windows console: input records, VT input, raw mode, size              | started |
+| 08  | [08-adoption.md](08-adoption.md) | Moving tmxr, hjkl and the rest off crossterm; retiring the crossterm fork | planned |

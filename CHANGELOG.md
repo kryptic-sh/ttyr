@@ -106,4 +106,11 @@ All notable changes to this project are documented here. The format follows
     `EnableWin32InputMode`/`DisableWin32InputMode`), and
     `Mode::VirtualTerminalInput`, Windows only.
   - `terminal::suspend` stays Unix only; `suspend_with` works on both.
+- A `ratatui` feature with `ttyr::backend::TtyrBackend`, a drop-in for
+  ratatui-crossterm's `CrosstermBackend`. It writes the same bytes for the same
+  buffers, tested side by side, and it is an `io::Write`, so commands go through
+  it in order with the frames. `get_cursor_position` returns where the backend
+  last put the cursor instead of asking the terminal and waiting.
+- `execute!` calls `io::Write::flush` explicitly, so it works on a writer that
+  is also a ratatui backend (which has a `flush` of its own).
 - A `serde` feature deriving `Serialize` and `Deserialize` on every event type.

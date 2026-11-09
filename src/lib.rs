@@ -6,11 +6,13 @@
 //! from a Unix tty or the Windows console; [`command`], crossterm's `Command`
 //! with `queue!` and `execute!`; the commands themselves in [`cursor`],
 //! [`style`] and [`terminal`], which also has the capability queries, the
-//! terminal's size and raw mode, and the guard that restores it. The ratatui
-//! backend is planned in `docs/plan/` in the repository.
+//! terminal's size and raw mode, and the guard that restores it; and with
+//! the `ratatui` feature, `backend`, a ratatui backend on all of it.
 //!
 //! [`Decoder`]: event::Decoder
 
+#[cfg(feature = "ratatui")]
+pub mod backend;
 pub mod command;
 pub mod cursor;
 pub mod event;
