@@ -69,4 +69,8 @@ All notable changes to this project are documented here. The format follows
   (DA2), `RequestTerminalVersion` (XTVERSION), `RequestMode` (DECRQM),
   `RequestTerminalColor` (OSC 10/11/12/4) and `RequestTextAreaPixels`
   (`CSI 14 t`).
+- `Reader::collect_answers(timeout)`: reads the answers to queries until DA1's
+  answer or the timeout. It returns them as `Answers`, with every other event
+  read meanwhile (keys typed, a resize, a wake) kept in order, and whether DA1's
+  answer came.
 - A `serde` feature deriving `Serialize` and `Deserialize` on every event type.

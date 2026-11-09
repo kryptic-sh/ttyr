@@ -55,12 +55,6 @@ What is not done yet, and why.
 
 ## Left from phase 04 (terminal modes)
 
-- **No helper that collects the answers to queries.** The query commands
-  (`RequestKeyboardEnhancementFlags`, `RequestPrimaryDeviceAttributes`, …) only
-  write the question; the answers arrive through `Reader` as `Event::Report`.
-  Phase 04 planned a small helper that reads until DA1's answer or the caller's
-  timeout, keeping the other events read meanwhile. Neither consumer has asked
-  for it (tmxr keeps its own probe for now); add it when one does.
 - **No SGR-pixels mouse (1016) in `SetMouseTracking` or `Mode::Mouse`.** Nothing
   asks for it (tmxr said so). The decoder reads its reports as cells already
   (see Decided in phase 02).

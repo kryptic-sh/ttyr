@@ -8,7 +8,10 @@ use std::time::{Duration, Instant};
 use rustix::termios::{Winsize, tcsetwinsize};
 
 use super::Reader;
-use crate::event::{Event, KeyCode, KeyEncoding, KeyEvent, KeyModifiers};
+use crate::event::{
+    Event, KeyCode, KeyEncoding, KeyEvent, KeyModifiers, KeyboardEnhancementFlags, ModeSetting,
+    Report,
+};
 use crate::test_pty::raw_pty as pty;
 
 /// The reader is one per process and `SIGWINCH` goes to the whole process,
@@ -230,4 +233,87 @@ fn the_reader_and_waker_can_move_between_threads() {
     fn send_sync<T: Send + Sync>() {}
     send::<Reader>();
     send_sync::<super::Waker>();
+}
+
+#[test]
+fn collect_answers_keeps_the_keys_typed_meanwhile_and_stops_at_da1() {
+    let _serial = serial();
+    let (mut term, tty) = pty();
+    let mut reader = Reader::from_fd(tty).unwrap();
+    reader.waker().wake().unwrap();
+    term.write_all(b"\x1B[?1ua\x1BP>|kitty(0.39.1)\x1B\\b\x1B[?62;22cz")
+        .unwrap();
+    let answers = reader.collect_answers(LONG).unwrap();
+    assert!(answers.complete);
+    assert_eq!(
+        answers.reports,
+        [
+            Report::KeyboardEnhancementFlags(KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES),
+            Report::TerminalVersion("kitty(0.39.1)".into()),
+            Report::PrimaryDeviceAttributes(vec![62, 22]),
+        ]
+    );
+    // The keys typed between the answers, in order; the wake, which came
+    // with them in one wait, is kept, before DA1 or after it.
+    let mut rest = Vec::new();
+    while reader.poll(Duration::from_millis(50)).unwrap() {
+        rest.push(reader.read().unwrap());
+    }
+    let wakes = |events: &[Event]| events.iter().filter(|e| **e == Event::Wake).count();
+    assert_eq!(wakes(&answers.events) + wakes(&rest), 1);
+    let keys = |events: &[Event]| -> Vec<Event> {
+        events
+            .iter()
+            .filter(|e| **e != Event::Wake)
+            .cloned()
+            .collect()
+    };
+    assert_eq!(
+        keys(&answers.events),
+        [key(KeyCode::Char('a')), key(KeyCode::Char('b'))]
+    );
+    // What came after DA1 is left to read.
+    assert_eq!(keys(&rest), [key(KeyCode::Char('z'))]);
+}
+
+#[test]
+fn collect_answers_gives_up_at_the_timeout() {
+    let _serial = serial();
+    let (mut term, tty) = pty();
+    let mut reader = Reader::from_fd(tty).unwrap();
+    term.write_all(b"\x1B[?2026;2$yq").unwrap();
+    let timeout = Duration::from_millis(100);
+    let start = Instant::now();
+    let answers = reader.collect_answers(timeout).unwrap();
+    assert!(start.elapsed() >= timeout && start.elapsed() < LONG);
+    assert!(!answers.complete);
+    assert_eq!(
+        answers.reports,
+        [Report::Mode {
+            mode: 2026,
+            private: true,
+            setting: ModeSetting::Reset,
+        }]
+    );
+    assert_eq!(answers.events, [key(KeyCode::Char('q'))]);
+}
+
+#[test]
+fn collect_answers_returns_a_wake_that_comes_while_it_waits() {
+    let _serial = serial();
+    let (mut term, tty) = pty();
+    let mut reader = Reader::from_fd(tty).unwrap();
+    let waker = reader.waker();
+    let answering = thread::spawn(move || {
+        thread::sleep(Duration::from_millis(50));
+        waker.wake().unwrap();
+        thread::sleep(Duration::from_millis(50));
+        term.write_all(b"\x1B[?62c").unwrap();
+        term
+    });
+    let answers = reader.collect_answers(LONG).unwrap();
+    let _term = answering.join().unwrap();
+    assert!(answers.complete);
+    assert_eq!(answers.events, [Event::Wake]);
+    assert_eq!(answers.reports, [Report::PrimaryDeviceAttributes(vec![62])]);
 }
