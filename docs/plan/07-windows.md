@@ -19,6 +19,10 @@ Still to do:
 
 - **Run it on a real Windows machine**: Windows Terminal (records, VT input and
   win32-input-mode), conhost, and ConPTY behind another terminal. The owner
-  plans a session this week.
+  plans a session this week. Among what to check: bracketed paste arriving as
+  one `Event::Paste` with `Mode::VirtualTerminalInput` and
+  `Mode::BracketedPaste` on (hjkl's plan for its Windows path, against pastes
+  crossterm turned into keystrokes), in Windows Terminal and in conhost; and
+  AltGr characters without Ctrl+Alt.
 - **Not known yet**: whether kitty keyboard sequences survive ConPTY at all
   (tmxr's plan 18 expects Windows panes to stay at kitty flag 1 or below).
