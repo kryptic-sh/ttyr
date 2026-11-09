@@ -47,6 +47,12 @@ fixed_commands! {
     /// Asks for the colour scheme now (`CSI ? 996 n`); the answer arrives as
     /// `Report::ColorScheme`.
     RequestColorScheme => "\x1B[?996n";
+    /// Windows Terminal's win32-input-mode (`CSI ? 9001 h`): every key as a
+    /// console key record, `CSI Vk ; Sc ; Uc ; Kd ; Cs ; Rc _`, read as
+    /// `KeyEncoding::Windows`. Other terminals ignore it.
+    EnableWin32InputMode => "\x1B[?9001h";
+    /// Ends win32-input-mode.
+    DisableWin32InputMode => "\x1B[?9001l";
     /// Holds the screen until [`EndSynchronizedUpdate`] (mode 2026), so a
     /// frame is never shown half drawn.
     BeginSynchronizedUpdate => "\x1B[?2026h";

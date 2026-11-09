@@ -93,4 +93,17 @@ All notable changes to this project are documented here. The format follows
   Ctrl+Backspace keep their Ctrl. An AltGr character has no Ctrl+Alt, and Caps
   Lock, Num Lock and the keypad are in the state. The same mapping will read the
   console API's records on Windows.
+- Windows (`windows-sys`):
+  - `Reader::open` reads the console. It waits on its input and the `Waker`'s
+    event together, so a wake ends a wait as on Unix.
+  - Key and mouse records read as events, the mouse's back and forward buttons
+    included. A resize reads as `Event::Resize` with the window's size.
+  - With VT input on, the bytes the terminal sends are decoded as on Unix.
+  - `terminal::size`, `window_size`, `enable_raw_mode` and `disable_raw_mode`
+    work through the console API. Raw mode also turns on VT output processing.
+  - The guard sets the console's input modes a mode needs. There are new modes:
+    `Mode::Win32Input` (`CSI ? 9001 h`, with the commands
+    `EnableWin32InputMode`/`DisableWin32InputMode`), and
+    `Mode::VirtualTerminalInput`, Windows only.
+  - `terminal::suspend` stays Unix only; `suspend_with` works on both.
 - A `serde` feature deriving `Serialize` and `Deserialize` on every event type.

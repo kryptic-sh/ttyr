@@ -6,13 +6,11 @@
 //! it. Modes written with the commands directly (`execute!(out,
 //! EnableMouseCapture)`) are not in it.
 //!
-//! On Windows (phase 07) `enable` and `disable` will also set the console's
-//! modes behind the same signatures.
+//! On Windows `enable` and `disable` also set the console's input modes the
+//! mode needs (mouse input, VT input).
 
-use std::fs::File;
 use std::io::{self, Write};
 use std::mem;
-use std::os::fd::OwnedFd;
 use std::sync::{Mutex, MutexGuard, Once, PoisonError};
 
 use super::modes::{
@@ -21,14 +19,15 @@ use super::modes::{
     EnableModifyOtherKeys, EnterAlternateScreen, LeaveAlternateScreen, MouseTracking,
     PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags, SetMouseTracking,
 };
-use super::unix::{
-    enable_raw_mode_on, is_raw_mode_enabled, open_tty, take_raw, take_raw_after_panic,
+use super::modes::{DisableWin32InputMode, EnableWin32InputMode};
+use super::sys::{
+    RawTty, enable_raw_mode_on, is_raw_mode_enabled, panic_output, take_raw, take_raw_after_panic,
 };
 use crate::command::Command;
 use crate::cursor::Show;
 use crate::event::KeyboardEnhancementFlags;
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod tests;
 
 /// The modes on, in the order they were turned on.
@@ -64,6 +63,15 @@ pub enum Mode {
     /// Kitty keyboard flags, pushed on the terminal's stack and popped when
     /// turned off.
     KeyboardFlags(KeyboardEnhancementFlags),
+    /// Windows Terminal's win32-input-mode (`CSI ? 9001 h`): every key as a
+    /// console key record in VT input, read as `KeyEncoding::Windows`, with
+    /// releases. Other terminals ignore it.
+    Win32Input,
+    /// The Windows console's VT input (`ENABLE_VIRTUAL_TERMINAL_INPUT`): the
+    /// reader gets the bytes the terminal sends, kitty's and xterm's
+    /// sequences among them, in place of the console's own key records.
+    #[cfg(windows)]
+    VirtualTerminalInput,
 }
 
 impl Mode {
@@ -82,6 +90,9 @@ impl Mode {
             Self::ColorSchemeReports => push(bytes, EnableColorSchemeReports),
             Self::ModifyOtherKeys => push(bytes, EnableModifyOtherKeys),
             Self::KeyboardFlags(flags) => push(bytes, PushKeyboardEnhancementFlags(flags)),
+            Self::Win32Input => push(bytes, EnableWin32InputMode),
+            #[cfg(windows)]
+            Self::VirtualTerminalInput => Ok(()),
         }
     }
 
@@ -95,6 +106,20 @@ impl Mode {
             Self::ColorSchemeReports => push(bytes, DisableColorSchemeReports),
             Self::ModifyOtherKeys => push(bytes, DisableModifyOtherKeys),
             Self::KeyboardFlags(_) => push(bytes, PopKeyboardEnhancementFlags),
+            Self::Win32Input => push(bytes, DisableWin32InputMode),
+            #[cfg(windows)]
+            Self::VirtualTerminalInput => Ok(()),
+        }
+    }
+
+    /// Sets the console input modes the mode needs besides its sequence:
+    /// mouse records for the mouse, and VT input.
+    #[cfg(windows)]
+    fn set_console(&self, on: bool) -> io::Result<()> {
+        match self {
+            Self::Mouse { .. } => super::windows::set_mouse_input(on),
+            Self::VirtualTerminalInput => super::windows::set_virtual_terminal_input(on),
+            _ => Ok(()),
         }
     }
 }
@@ -133,6 +158,8 @@ pub fn enable(out: &mut impl Write, mode: Mode) -> io::Result<()> {
     }
     mode.write_on(&mut bytes)?;
     out.write_all(bytes.as_bytes())?;
+    #[cfg(windows)]
+    mode.set_console(true)?;
     match at {
         Some(i) => on[i] = mode,
         None => on.push(mode),
@@ -150,6 +177,8 @@ pub fn disable(out: &mut impl Write, mode: Mode) -> io::Result<()> {
     let mut bytes = String::new();
     on[i].write_off(&mut bytes)?;
     out.write_all(bytes.as_bytes())?;
+    #[cfg(windows)]
+    on[i].set_console(false)?;
     on.remove(i);
     Ok(())
 }
@@ -164,8 +193,15 @@ pub fn restore(out: &mut impl Write) -> io::Result<()> {
 
 /// [`restore`], returning the modes that were on and the terminal raw mode
 /// was on, to turn back on.
-fn release(out: &mut impl Write) -> io::Result<(Vec<Mode>, Option<OwnedFd>)> {
+fn release(out: &mut impl Write) -> io::Result<(Vec<Mode>, Option<RawTty>)> {
     let modes = mem::take(&mut *on());
+    // The console's modes go back with raw mode's; without it, each mode's.
+    #[cfg(windows)]
+    if !is_raw_mode_enabled() {
+        for mode in modes.iter().rev() {
+            mode.set_console(false)?;
+        }
+    }
     let wrote = if modes.is_empty() && !is_raw_mode_enabled() {
         Ok(())
     } else {
@@ -199,7 +235,9 @@ pub fn suspend_with<T>(out: &mut impl Write, f: impl FnOnce() -> T) -> io::Resul
 
 /// Stops the process as Ctrl+Z does outside raw mode (`SIGTSTP`), the
 /// terminal given back while it is stopped (see [`suspend_with`]), and
-/// returns once the shell continues it.
+/// returns once the shell continues it. Unix only: Windows has no job
+/// control to stop a process with.
+#[cfg(unix)]
 pub fn suspend(out: &mut impl Write) -> io::Result<()> {
     suspend_with(out, || {
         signal_hook::low_level::raise(signal_hook::consts::SIGTSTP)
@@ -233,14 +271,9 @@ fn restore_after_panic() {
     if modes.is_empty() && tty.is_none() {
         return;
     }
-    let tty = match tty {
-        Some(tty) => tty,
-        None => match open_tty() {
-            Ok(tty) => tty,
-            Err(_) => return,
-        },
+    let Ok(mut out) = panic_output(tty) else {
+        return;
     };
-    let mut out = File::from(tty);
     if let Ok(bytes) = offs(&modes) {
         let _ = out.write_all(bytes.as_bytes());
     }

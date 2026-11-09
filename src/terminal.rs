@@ -1,38 +1,40 @@
 //! The terminal itself: the modes a program turns on and off, and the
-//! queries it asks, as [`Command`](crate::command::Command)s; and on Unix its size, raw mode, and
-//! the guard that turns every mode off again (`enable`, `restore`).
-//!
-//! The size, raw mode and the guard are Unix only for now; the Windows console's side is
-//! planned (phase 07 in `docs/plan/`), so on Windows they do not exist and a
-//! use of them fails to compile.
+//! queries it asks, as [`Command`](crate::command::Command)s; its size and
+//! raw mode; and the guard that turns every mode off again (`enable`,
+//! `restore`). On Unix that is the tty's; on Windows, the console's.
 
-#[cfg(unix)]
 use std::sync::{Mutex, MutexGuard, TryLockError};
 
-#[cfg(unix)]
 mod guard;
 mod modes;
 mod queries;
 mod screen;
 #[cfg(unix)]
 mod unix;
+#[cfg(unix)]
+use unix as sys;
+#[cfg(windows)]
+mod windows;
+#[cfg(windows)]
+use windows as sys;
 
 #[cfg(unix)]
-pub use guard::{Mode, disable, enable, restore, restore_on_panic, suspend, suspend_with};
+pub use guard::suspend;
+pub use guard::{Mode, disable, enable, restore, restore_on_panic, suspend_with};
 pub use modes::*;
 pub use queries::*;
 pub use screen::*;
-#[cfg(unix)]
-pub use unix::{
+pub use sys::{
     WindowSize, disable_raw_mode, enable_raw_mode, is_raw_mode_enabled, size, window_size,
 };
 #[cfg(unix)]
 pub(crate) use unix::{open_tty, window_size_of};
+#[cfg(windows)]
+pub(crate) use windows::{Console, console_mode, window_size_of, window_top};
 
 /// Locks `state` from a panic hook, which may run while this thread holds it
 /// (the panic came from inside): `None` then, rather than a deadlock. A
 /// poisoned lock is taken as it is.
-#[cfg(unix)]
 fn lock_after_panic<T>(state: &Mutex<T>) -> Option<MutexGuard<'_, T>> {
     match state.try_lock() {
         Ok(guard) => Some(guard),

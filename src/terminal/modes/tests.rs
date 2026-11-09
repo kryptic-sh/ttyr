@@ -25,6 +25,8 @@ fn each_mode_writes_its_sequence() {
     assert_eq!(bytes(EnableColorSchemeReports), "\x1B[?2031h");
     assert_eq!(bytes(DisableColorSchemeReports), "\x1B[?2031l");
     assert_eq!(bytes(RequestColorScheme), "\x1B[?996n");
+    assert_eq!(bytes(EnableWin32InputMode), "\x1B[?9001h");
+    assert_eq!(bytes(DisableWin32InputMode), "\x1B[?9001l");
     assert_eq!(bytes(BeginSynchronizedUpdate), "\x1B[?2026h");
     assert_eq!(bytes(EndSynchronizedUpdate), "\x1B[?2026l");
 }

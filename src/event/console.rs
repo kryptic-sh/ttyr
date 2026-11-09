@@ -1,16 +1,24 @@
-//! The Windows console's key records as key events: what the console API
-//! hands a program (`KEY_EVENT_RECORD`), and what Windows Terminal's
-//! win32-input-mode writes as `CSI Vk ; Sc ; Uc ; Kd ; Cs ; Rc _`. Plain
-//! values in and out, so it is built and tested on every platform.
+//! The Windows console's key and mouse records as events: what the console
+//! API hands a program (`KEY_EVENT_RECORD`, `MOUSE_EVENT_RECORD`), and the
+//! key records Windows Terminal's win32-input-mode writes as
+//! `CSI Vk ; Sc ; Uc ; Kd ; Cs ; Rc _`. Plain values in and out, so it is
+//! built and tested on every platform.
 //!
 //! Where crossterm reads these records it drops what ttyr keeps: a key's
-//! release and repeat, Ctrl with Enter and Backspace, and the keypad.
+//! release and repeat, Ctrl with Enter and Backspace, the keypad, and the
+//! back and forward mouse buttons.
 
 use super::{KeyCode, KeyEncoding, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
 use crate::event::MediaKeyCode;
 
+// Read only by the Windows reader, and tested everywhere.
+#[cfg(any(windows, test))]
+mod mouse;
 #[cfg(test)]
 mod tests;
+
+#[cfg(windows)]
+pub use mouse::{ConsoleMouse, MouseRecord};
 
 /// A console key record's fields, as `KEY_EVENT_RECORD` has them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]

@@ -2,8 +2,9 @@
 
 What is not done yet, and why.
 
-- **Phases 06 to 08 are not done**: the ratatui backend, Windows, and moving the
-  consumers off crossterm, planned in `docs/plan/`.
+- **Phases 06 and 08 are not done, and 07 is not finished**: the ratatui
+  backend, moving the consumers off crossterm, and Windows on a real machine,
+  planned in `docs/plan/`.
 - **The crate name is not reserved on crates.io.** `ttyr` was free on
   2026-11-09; it is taken when the first version is published by the tag
   pipeline in `.github/workflows/ci.yml`.
@@ -53,6 +54,17 @@ What is not done yet, and why.
   by removing the guard).
 
 ## Phase 07 in progress (Windows)
+
+- **Nothing in phase 07 has run on a real Windows console yet.** The Windows
+  tests (`src/reader/windows/tests.rs`, `src/terminal/windows/tests.rs`) write
+  records into a console the test process allocates, so they exercise the
+  console API, not Windows Terminal, conhost's own keyboard handling or ConPTY.
+- **Focus records are ignored**: Microsoft documents `FOCUS_EVENT` as the
+  console's internal. Focus reports come with VT input and mode 1004.
+- **`window_size` has no pixels on Windows**: the console does not report them
+  (`width` and `height` are 0).
+- **Quick Edit stays off after `Mode::Mouse` is disabled** until raw mode
+  restores the console's original input mode.
 
 - **A modifier or lock key's own record is dropped** (`ConsoleKeys::key`):
   Shift, Ctrl, Alt, the Windows keys and the locks pressed alone are no event,

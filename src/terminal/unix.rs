@@ -1,5 +1,6 @@
 //! The Unix terminal's size and raw mode.
 
+use std::fs::File;
 use std::io;
 use std::os::fd::{AsFd, OwnedFd};
 use std::sync::{Mutex, MutexGuard, PoisonError};
@@ -119,4 +120,16 @@ fn make_raw(tty: OwnedFd) -> io::Result<(OwnedFd, Termios)> {
     termios.make_raw();
     tcsetattr(&tty, OptionalActions::Now, &termios)?;
     Ok((tty, original))
+}
+
+/// What raw mode changes: the terminal, to put back.
+pub type RawTty = OwnedFd;
+
+/// Where a panic hook writes the modes' off sequences: the terminal raw mode
+/// was on, or else `/dev/tty`.
+pub fn panic_output(raw: Option<OwnedFd>) -> io::Result<File> {
+    Ok(File::from(match raw {
+        Some(tty) => tty,
+        None => open_tty()?,
+    }))
 }

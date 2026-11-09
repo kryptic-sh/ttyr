@@ -19,5 +19,5 @@ and 06.
 | 04  | Terminal modes                                 | Raw mode, size, the modes a program turns on, restore from a panic        | done    |
 | 05  | Output                                         | Commands: cursor, clear, styles and colours, queued and flushed           | done    |
 | 06  | [06-ratatui-backend.md](06-ratatui-backend.md) | `ratatui_core::backend::Backend` on ttyr                                  | planned |
-| 07  | [07-windows.md](07-windows.md)                 | The Windows console: input records, VT input, raw mode, size              | planned |
+| 07  | [07-windows.md](07-windows.md)                 | The Windows console: input records, VT input, raw mode, size              | started |
 | 08  | [08-adoption.md](08-adoption.md)               | Moving tmxr, hjkl and the rest off crossterm; retiring the crossterm fork | planned |
