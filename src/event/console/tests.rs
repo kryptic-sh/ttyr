@@ -131,8 +131,32 @@ fn an_alt_code_types_its_character_on_alts_release() {
         numpad(0x63, false),
         record(VK_MENU, unit('é'), false, 0),
     ];
-    let events: Vec<_> = records.iter().filter_map(|r| keys.key(r)).collect();
-    assert_eq!(events, [key(KeyCode::Char('é'), KeyModifiers::NONE)]);
+    let events: Vec<_> = records.iter().flat_map(|r| keys.events(r)).collect();
+    let e = key(KeyCode::Char('é'), KeyModifiers::NONE);
+    assert_eq!(events, [e.clone(), e.with_kind(KeyEventKind::Release)]);
+}
+
+#[test]
+fn only_an_alt_code_brings_its_own_release() {
+    let mut keys = ConsoleKeys::default();
+    let a: Vec<_> = keys.events(&record(0x41, unit('a'), true, 0)).collect();
+    assert_eq!(a, [key(KeyCode::Char('a'), KeyModifiers::NONE)]);
+    assert_eq!(keys.events(&record(VK_SHIFT, 0, true, SHIFT)).count(), 0);
+}
+
+#[test]
+fn a_record_with_no_key_is_text() {
+    assert!(record(0, 0x1B, true, 0).is_text());
+    assert!(!record(VK_ESCAPE, 0x1B, true, 0).is_text());
+    let scanned = KeyRecord {
+        scan: 1,
+        ..record(0, 0x1B, true, 0)
+    };
+    assert!(!scanned.is_text());
+    let mut keys = ConsoleKeys::default();
+    assert_eq!(keys.text(0xD83D), None);
+    assert_eq!(keys.text(0xDE00), Some('😀'));
+    assert_eq!(keys.text(unit('a')), Some('a'));
 }
 
 #[test]

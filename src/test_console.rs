@@ -5,9 +5,9 @@ use std::os::windows::io::{AsHandle, AsRawHandle};
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
 use windows_sys::Win32::System::Console::{
-    AllocConsole, COORD, FlushConsoleInputBuffer, INPUT_RECORD, INPUT_RECORD_0, KEY_EVENT,
-    KEY_EVENT_RECORD, KEY_EVENT_RECORD_0, MOUSE_EVENT, MOUSE_EVENT_RECORD,
-    WINDOW_BUFFER_SIZE_EVENT, WINDOW_BUFFER_SIZE_RECORD, WriteConsoleInputW,
+    AllocConsole, COORD, FOCUS_EVENT, FOCUS_EVENT_RECORD, FlushConsoleInputBuffer, INPUT_RECORD,
+    INPUT_RECORD_0, KEY_EVENT, KEY_EVENT_RECORD, KEY_EVENT_RECORD_0, MOUSE_EVENT,
+    MOUSE_EVENT_RECORD, WINDOW_BUFFER_SIZE_EVENT, WINDOW_BUFFER_SIZE_RECORD, WriteConsoleInputW,
 };
 
 use crate::terminal::Console;
@@ -71,6 +71,18 @@ pub fn mouse(x: i16, y: i16, buttons: u32, flags: u32) -> INPUT_RECORD {
                 dwButtonState: buttons,
                 dwControlKeyState: 0,
                 dwEventFlags: flags,
+            },
+        },
+    }
+}
+
+/// A focus record: gained, or lost.
+pub fn focus(gained: bool) -> INPUT_RECORD {
+    INPUT_RECORD {
+        EventType: u16::try_from(FOCUS_EVENT).unwrap(),
+        Event: INPUT_RECORD_0 {
+            FocusEvent: FOCUS_EVENT_RECORD {
+                bSetFocus: i32::from(gained),
             },
         },
     }

@@ -50,6 +50,13 @@ pub struct Decoder {
     /// Whether the kitty keyboard protocol is on, which decides what a
     /// key's modifier bit 8 is.
     kitty_keyboard: bool,
+    /// The release that follows an Alt code's character, which one record
+    /// brings with the press.
+    release: Option<KeyEvent>,
+    /// The bytes win32-input-mode's text records stand for (see
+    /// [`KeyRecord::is_text`]), read on their own: a sequence in them is
+    /// spread over records, so not in a row in `buf`.
+    text: Option<Box<Self>>,
 }
 
 impl Decoder {
@@ -98,15 +105,33 @@ impl Decoder {
 
     /// Whether bytes are held that are not an event yet.
     pub fn has_pending(&self) -> bool {
-        self.start < self.buf.len()
+        self.start < self.buf.len() || self.text.as_ref().is_some_and(|text| text.has_pending())
     }
 
     fn decode(&mut self, at_end: bool) -> Option<Event> {
+        let event = self.next(at_end)?;
+        if let Event::Report(Report::KeyboardEnhancementFlags(flags)) = &event {
+            self.kitty_keyboard = !flags.is_empty();
+        }
+        Some(event)
+    }
+
+    fn next(&mut self, at_end: bool) -> Option<Event> {
+        if let Some(release) = self.release.take() {
+            return Some(Event::Key(release));
+        }
         let input = Input {
             at_end,
             kitty: self.kitty_keyboard,
         };
         loop {
+            // Text records' events first: they came before what is left.
+            if let Some(text) = &mut self.text {
+                text.kitty_keyboard = self.kitty_keyboard;
+                if let Some(event) = text.decode(at_end) {
+                    return Some(event);
+                }
+            }
             let pending = &self.buf[self.start..];
             if let Some(scanned) = self.paste_scanned {
                 return self.paste(scanned);
@@ -117,18 +142,27 @@ impl Decoder {
             match parse(pending, input) {
                 Parsed::Event(event, len) => {
                     self.start += len;
-                    if let Event::Report(Report::KeyboardEnhancementFlags(flags)) = &event {
-                        self.kitty_keyboard = !flags.is_empty();
-                    }
                     return Some(event);
                 }
                 Parsed::PasteStart(len) => {
                     self.start += len;
                     self.paste_scanned = Some(0);
                 }
+                Parsed::ConsoleKey(record, len) if record.is_text() => {
+                    self.start += len;
+                    if record.down
+                        && record.unit != 0
+                        && let Some(c) = self.console.text(record.unit)
+                    {
+                        let text = self.text.get_or_insert_default();
+                        text.feed(c.encode_utf8(&mut [0; 4]).as_bytes());
+                    }
+                }
                 Parsed::ConsoleKey(record, len) => {
                     self.start += len;
-                    if let Some(key) = self.console.key(&record) {
+                    let mut events = self.console.events(&record);
+                    if let Some(key) = events.next() {
+                        self.release = events.next();
                         return Some(Event::Key(key));
                     }
                 }

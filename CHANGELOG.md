@@ -97,13 +97,19 @@ All notable changes to this project are documented here. The format follows
   `KeyEncoding::Windows`. Releases and repeats are reported, and Ctrl+Enter and
   Ctrl+Backspace keep their Ctrl. An AltGr character has no Ctrl+Alt, and Caps
   Lock, Num Lock and the keypad are in the state. The same mapping will read the
-  console API's records on Windows.
+  console API's records on Windows. An Alt code's character is a press followed
+  by its release. A record with no virtual-key or scan code (conhost's answers
+  to queries) is read as the bytes it carries, so a DA1 answer arrives as a
+  report, not as typing.
 - Windows (`windows-sys`):
   - `Reader::open` reads the console. It waits on its input and the `Waker`'s
     event together, so a wake ends a wait as on Unix.
   - Key and mouse records read as events, the mouse's back and forward buttons
     included. A resize reads as `Event::Resize` with the window's size.
   - With VT input on, the bytes the terminal sends are decoded as on Unix.
+  - With VT input off, focus records read as `Event::FocusGained` and
+    `Event::FocusLost`, as in crossterm. With it on they are dropped: the
+    terminal reports focus itself under `EnableFocusChange`.
   - `terminal::size`, `window_size`, `enable_raw_mode` and `disable_raw_mode`
     work through the console API. Raw mode also turns on VT output processing.
   - The guard sets the console's input modes a mode needs, and turning the mode

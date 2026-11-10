@@ -809,6 +809,10 @@ const CORPUS: &[&[u8]] = &[
     b"a",
     b"\x1B[65;30;65;1;16;1_",
     b"\x1B[0;0;55357;1;0;1_\x1B[0;0;56832;1;0;1_",
+    // DA1's answer, `CSI ? 6 c`, as conhost's text records.
+    b"\x1B[0;0;27;1;0;1_\x1B[0;0;91;1;0;1_\x1B[0;0;63;1;0;1_\x1B[0;0;54;1;0;1_\x1B[0;0;99;1;0;1_",
+    // Alt+0233 ends in é with Alt's release: a press and its release.
+    b"\x1B[18;56;233;0;0;1_",
     "é😀".as_bytes(),
     b"\x1B[1;5A",
     b"\x1BOP",
@@ -833,7 +837,8 @@ const CORPUS: &[&[u8]] = &[
 fn a_sequence_split_anywhere_reads_the_same() {
     let whole: Vec<u8> = CORPUS.concat();
     let expected = decode(&whole);
-    assert_eq!(expected.len(), CORPUS.len() + 1, "{expected:?}"); // "é😀" is two keys.
+    // "é😀" is two keys, and the Alt code a press and a release.
+    assert_eq!(expected.len(), CORPUS.len() + 2, "{expected:?}");
     for split in 1..whole.len() {
         let mut decoder = Decoder::new();
         decoder.feed(&whole[..split]);
@@ -916,6 +921,68 @@ fn win32_input_mode_records() {
     );
     // A modifier key's own record is no event.
     assert_eq!(decode(b"\x1B[16;42;0;1;16;1_"), []);
+}
+
+/// win32-input-mode records for `text`, as conhost writes its answers to
+/// queries: no virtual-key or scan code, each unit down then up.
+fn text_records(text: &str) -> Vec<u8> {
+    text.encode_utf16()
+        .flat_map(|unit| {
+            [
+                format!("\x1B[0;0;{unit};1;0;1_"),
+                format!("\x1B[0;0;{unit};0;0;1_"),
+            ]
+        })
+        .collect::<String>()
+        .into_bytes()
+}
+
+#[test]
+fn win32_input_mode_text_records_are_the_terminals_bytes() {
+    // DA1's answer arrives as a report, not as Escape and typing.
+    assert_eq!(
+        decode(&text_records("\x1B[?62;22c")),
+        [Event::Report(Report::PrimaryDeviceAttributes(vec![62, 22]))]
+    );
+    // A key record in the middle of an answer comes first; the answer is
+    // whole once its last record does.
+    let mut bytes = text_records("\x1B[?6");
+    bytes.extend_from_slice(b"\x1B[65;30;97;1;0;1_");
+    bytes.extend(text_records("2c"));
+    let a =
+        KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE).with_encoding(KeyEncoding::Windows);
+    assert_eq!(
+        decode(&bytes),
+        [
+            Event::Key(a),
+            Event::Report(Report::PrimaryDeviceAttributes(vec![62])),
+        ]
+    );
+    // A lone Escape in text records is held, then flushed as Escape.
+    let mut decoder = Decoder::new();
+    decoder.feed(&text_records("\x1B"));
+    assert_eq!(decoder.next_event(), None);
+    assert!(decoder.has_pending());
+    assert_eq!(
+        decoder.flush_event(),
+        Some(Event::Key(legacy(KeyCode::Esc, NONE)))
+    );
+    assert!(!decoder.has_pending());
+}
+
+#[test]
+fn win32_input_mode_alt_code_is_pressed_and_released() {
+    // Alt down, keypad 2 3 3, Alt up with é: the press and its release.
+    let records = b"\x1B[18;56;0;1;2;1_\x1B[98;80;0;1;2;1_\x1B[98;80;0;0;2;1_\x1B[99;81;0;1;2;1_\x1B[99;81;0;0;2;1_\x1B[99;81;0;1;2;1_\x1B[99;81;0;0;2;1_\x1B[18;56;233;0;0;1_";
+    let e =
+        KeyEvent::new(KeyCode::Char('é'), KeyModifiers::NONE).with_encoding(KeyEncoding::Windows);
+    assert_eq!(
+        decode(records),
+        [
+            Event::Key(e.clone()),
+            Event::Key(e.with_kind(KeyEventKind::Release)),
+        ]
+    );
 }
 
 /// A background colour answer's channels, for `spec`; `None` when the

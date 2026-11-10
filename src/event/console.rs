@@ -35,6 +35,16 @@ pub struct KeyRecord {
     pub state: u32,
 }
 
+impl KeyRecord {
+    /// Whether the record is text no key made: no virtual-key code and no
+    /// scan code. The console writes the answers to a terminal's queries
+    /// into the input so, a character a record, with their bytes as the
+    /// characters; they are read as a terminal's bytes, not as keys.
+    pub const fn is_text(&self) -> bool {
+        self.vk == 0 && self.scan == 0
+    }
+}
+
 // `dwControlKeyState` bits, fixed by the Windows API (wincon.h).
 const RIGHT_ALT_PRESSED: u32 = 0x0001;
 const LEFT_ALT_PRESSED: u32 = 0x0002;
@@ -98,6 +108,37 @@ pub struct ConsoleKeys {
 }
 
 impl ConsoleKeys {
+    /// The key events `record` is: [`ConsoleKeys::key`]'s, and after an Alt
+    /// code's character its release. The console makes Alt codes itself for
+    /// characters the keyboard layout lacks, pasted or sent by a terminal,
+    /// and no record releases what they type.
+    pub fn events(&mut self, record: &KeyRecord) -> impl Iterator<Item = KeyEvent> + use<> {
+        let event = self.key(record);
+        let release = event
+            .as_ref()
+            .filter(|_| is_alt_code(record))
+            .map(|press| press.clone().with_kind(KeyEventKind::Release));
+        event.into_iter().chain(release)
+    }
+
+    /// The character a text record's `unit` completes (see
+    /// [`KeyRecord::is_text`]): itself, or with the high surrogate before
+    /// it, which is held until its low half comes.
+    pub fn text(&mut self, unit: u16) -> Option<char> {
+        let units = match unit {
+            0xD800..=0xDBFF => {
+                self.surrogate = Some(unit);
+                return None;
+            }
+            0xDC00..=0xDFFF => [self.surrogate.take()?, unit],
+            _ => {
+                self.surrogate = None;
+                return char::from_u32(u32::from(unit));
+            }
+        };
+        char::decode_utf16(units).next()?.ok()
+    }
+
     /// The key event `record` is, or `None` for a record that is not one on
     /// its own: a modifier or lock key (Shift, Ctrl, Alt, the Windows keys,
     /// Caps Lock, Num Lock, Scroll Lock), a digit typed on the keypad as part
@@ -191,18 +232,7 @@ impl ConsoleKeys {
     /// The character `unit` completes: itself, or with the high surrogate
     /// before it.
     fn typed(&mut self, unit: u16) -> Option<Key> {
-        let units = match unit {
-            0xD800..=0xDBFF => {
-                self.surrogate = Some(unit);
-                return None;
-            }
-            0xDC00..=0xDFFF => [self.surrogate.take()?, unit],
-            _ => {
-                self.surrogate = None;
-                return char::from_u32(u32::from(unit)).map(Key::Char);
-            }
-        };
-        char::decode_utf16(units).next()?.ok().map(Key::Char)
+        self.text(unit).map(Key::Char)
     }
 }
 

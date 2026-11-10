@@ -9,7 +9,7 @@ use crate::event::{
 };
 use crate::reader::Reader;
 use crate::terminal::{Console, Mode, disable, enable, window_top};
-use crate::test_console::{console, inject, key, mouse, resize};
+use crate::test_console::{console, focus, inject, key, mouse, resize};
 
 /// Longer than any wait a test expects to end, so a hang fails instead.
 const LONG: Duration = Duration::from_secs(5);
@@ -122,6 +122,74 @@ fn with_vt_input_the_records_are_the_terminals_bytes() {
     assert_eq!(reader.read().unwrap(), Event::Key(euro));
     drop(reader);
     disable(&mut out, Mode::VirtualTerminalInput).unwrap();
+}
+
+#[test]
+fn focus_records_read_as_focus_events_without_vt_input() {
+    let _console = console();
+    let mut reader = Reader::open().unwrap();
+    inject(&[focus(true), focus(false)]);
+    assert_eq!(reader.read().unwrap(), Event::FocusGained);
+    assert_eq!(reader.read().unwrap(), Event::FocusLost);
+}
+
+#[test]
+fn with_vt_input_focus_records_are_dropped() {
+    let _console = console();
+    let mut out = Vec::new();
+    enable(&mut out, Mode::VirtualTerminalInput).unwrap();
+    let mut reader = Reader::open().unwrap();
+    // The terminal reports focus itself (`CSI I`) when asked.
+    let mut records = vec![focus(true)];
+    records.extend("\x1B[I".encode_utf16().map(|unit| key(0, unit, true, 0)));
+    inject(&records);
+    assert_eq!(reader.read().unwrap(), Event::FocusGained);
+    assert!(!reader.poll(Duration::ZERO).unwrap());
+    drop(reader);
+    disable(&mut out, Mode::VirtualTerminalInput).unwrap();
+}
+
+#[test]
+fn an_alt_code_reads_as_a_press_and_a_release() {
+    let _console = console();
+    let mut reader = Reader::open().unwrap();
+    // Alt (0x12, left Alt 0x2) held over keypad 2 3 3, then released with
+    // the character: as conhost writes a character the layout lacks.
+    let mut records = vec![key(0x12, 0, true, 0x2)];
+    for vk in [0x62, 0x63, 0x63] {
+        records.push(key(vk, 0, true, 0x2));
+        records.push(key(vk, 0, false, 0x2));
+    }
+    records.push(key(0x12, 0xE9, false, 0)); // 0xE9 is é.
+    inject(&records);
+    let e = windows_key(KeyCode::Char('é'), KeyModifiers::NONE);
+    assert_eq!(reader.read().unwrap(), Event::Key(e.clone()));
+    assert_eq!(
+        reader.read().unwrap(),
+        Event::Key(e.with_kind(KeyEventKind::Release))
+    );
+    assert!(!reader.poll(Duration::ZERO).unwrap());
+}
+
+#[test]
+fn records_with_no_key_are_the_consoles_bytes_without_vt_input() {
+    let _console = console();
+    let mut reader = Reader::open().unwrap();
+    // DA1's answer as conhost writes it, then a key typed after it.
+    let mut records: Vec<_> = "\x1B[?62;22c"
+        .encode_utf16()
+        .map(|unit| key(0, unit, true, 0))
+        .collect();
+    records.push(key(0x41, u16::from(b'a'), true, 0));
+    inject(&records);
+    assert_eq!(
+        reader.read().unwrap(),
+        Event::Report(crate::event::Report::PrimaryDeviceAttributes(vec![62, 22]))
+    );
+    assert_eq!(
+        reader.read().unwrap(),
+        Event::Key(windows_key(KeyCode::Char('a'), KeyModifiers::NONE))
+    );
 }
 
 #[test]

@@ -83,8 +83,19 @@ What is not done yet, and why.
   tests (`src/reader/windows/tests.rs`, `src/terminal/windows/tests.rs`) write
   records into a console the test process allocates, so they exercise the
   console API, not Windows Terminal, conhost's own keyboard handling or ConPTY.
-- **Focus records are ignored**: Microsoft documents `FOCUS_EVENT` as the
-  console's internal. Focus reports come with VT input and mode 1004.
+- **Focus records are read only with VT input off**, as crossterm reads them,
+  although Microsoft documents `FOCUS_EVENT` as the console's internal. With VT
+  input on they are dropped, so focus is reported once, by the terminal under
+  mode 1004. Not checked on a real console: whether conhost sends them when the
+  window gains and loses focus.
+- **A key record with no virtual-key and no scan code is text**
+  (`KeyRecord::is_text`), read as a terminal's bytes, in win32-input-mode and in
+  the console's records. tmxr's review recalled conhost writing its answers to
+  queries (DA1, likely the OSC colours) into the input that way; unverified on a
+  real console. A character typed with no key behind it (IME, `SendInput`
+  without a virtual key) reads as a legacy key with no release either.
+- **An Alt code's release is made up**: the console sends its character only
+  with Alt's release, so ttyr reports a press and, at once, a release.
 - **`window_size` has no pixels on Windows**: the console does not report them
   (`width` and `height` are 0).
 - **A modifier or lock key's own record is dropped** (`ConsoleKeys::key`):

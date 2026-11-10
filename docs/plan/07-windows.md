@@ -23,6 +23,9 @@ Still to do:
   one `Event::Paste` with `Mode::VirtualTerminalInput` and
   `Mode::BracketedPaste` on (hjkl's plan for its Windows path, against pastes
   crossterm turned into keystrokes), in Windows Terminal and in conhost; and
-  AltGr characters without Ctrl+Alt.
+  AltGr characters without Ctrl+Alt. Also: focus records in conhost with VT
+  input off, an answer to DA1 in conhost with win32-input-mode on (text records,
+  not keys), and a character the layout lacks (an Alt code, pressed and
+  released).
 - **Not known yet**: whether kitty keyboard sequences survive ConPTY at all
   (tmxr's plan 18 expects Windows panes to stay at kitty flag 1 or below).

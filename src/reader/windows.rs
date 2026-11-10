@@ -4,8 +4,13 @@
 //! The console hands over records. Key records go through the console key
 //! mapping, unless VT input is on (`ENABLE_VIRTUAL_TERMINAL_INPUT`), when
 //! their characters are the bytes the terminal sent, read by the decoder as
-//! on Unix. Mouse records and resizes become events; focus and menu records
-//! are the console's own, which Microsoft's documentation says to ignore.
+//! on Unix. A key record no key made (no virtual-key or scan code) is such
+//! bytes whatever the mode: the console's answer to a query. Mouse records
+//! and resizes become events. Focus records become focus events with VT
+//! input off, as crossterm reads them; with it on, the terminal reports
+//! focus itself when asked (`?1004h`), and the console's records would
+//! report it twice. Menu records are the console's own, which Microsoft's
+//! documentation says to ignore.
 
 use std::io;
 use std::os::windows::io::{AsHandle, AsRawHandle, FromRawHandle, OwnedHandle};
@@ -14,8 +19,8 @@ use std::time::Duration;
 
 use windows_sys::Win32::Foundation::{WAIT_FAILED, WAIT_OBJECT_0, WAIT_TIMEOUT};
 use windows_sys::Win32::System::Console::{
-    ENABLE_VIRTUAL_TERMINAL_INPUT, GetNumberOfConsoleInputEvents, INPUT_RECORD, KEY_EVENT,
-    MOUSE_EVENT, ReadConsoleInputW, WINDOW_BUFFER_SIZE_EVENT,
+    ENABLE_VIRTUAL_TERMINAL_INPUT, FOCUS_EVENT, GetNumberOfConsoleInputEvents, INPUT_RECORD,
+    KEY_EVENT, MOUSE_EVENT, ReadConsoleInputW, WINDOW_BUFFER_SIZE_EVENT,
 };
 use windows_sys::Win32::System::Threading::{
     CreateEventW, INFINITE, SetEvent, WaitForMultipleObjects,
@@ -140,13 +145,6 @@ impl Source {
                     let key = unsafe { record.Event.KeyEvent };
                     // SAFETY: a key event's character is a UTF-16 unit.
                     let unit = unsafe { key.uChar.UnicodeChar };
-                    if vt_input {
-                        // The terminal's bytes, one unit per key down.
-                        if key.bKeyDown != 0 && unit != 0 {
-                            text.push(unit);
-                        }
-                        continue;
-                    }
                     let record = KeyRecord {
                         vk: key.wVirtualKeyCode,
                         scan: key.wVirtualScanCode,
@@ -154,9 +152,27 @@ impl Source {
                         down: key.bKeyDown != 0,
                         state: key.dwControlKeyState,
                     };
-                    if let Some(event) = self.keys.key(&record) {
+                    if vt_input || record.is_text() {
+                        // The terminal's bytes, one unit per key down.
+                        if record.down && unit != 0 {
+                            text.push(unit);
+                        }
+                        continue;
+                    }
+                    self.feed_text(&mut text, queue);
+                    for event in self.keys.events(&record) {
                         queue.push(Event::Key(event));
                     }
+                }
+                FOCUS_EVENT if !vt_input => {
+                    self.feed_text(&mut text, queue);
+                    // SAFETY: the record says it is a focus event.
+                    let focus = unsafe { record.Event.FocusEvent };
+                    queue.push(if focus.bSetFocus != 0 {
+                        Event::FocusGained
+                    } else {
+                        Event::FocusLost
+                    });
                 }
                 MOUSE_EVENT => {
                     self.feed_text(&mut text, queue);
