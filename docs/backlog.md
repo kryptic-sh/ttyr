@@ -138,9 +138,15 @@ So the next surprise is cheap; each is a decoder choice, not a bug.
 
 - **`CSI 1 ; mods R` is a cursor position report**, not xterm's modified F3
   (crossterm reads it the same way). kitty sends F3 as `CSI 13 ~` to avoid this.
-- **In the legacy forms (`CSI 1 ; mods A`, `CSI n ; mods ~`, SS3), modifier bit
-  8 is Super**, as kitty sends those forms, not xterm's Meta. Only
-  `CSI 27 ; mods ; key ~` is xterm's alone and reads bit 8 as Meta.
+- **Modifier bit 8 is Super only while the kitty protocol is on**
+  (`Decoder::set_kitty_keyboard`, or the terminal's answer to a flags query);
+  otherwise it is xterm's Meta, as tmux reads it. `CSI 1 ; 9 A` is the same
+  bytes from both, so a program that pushes kitty flags without saying so gets
+  Super as Meta. A kind (`mods:kind`) or a bit above 8 is kitty's either way.
+  `CSI 27 ; mods ; key ~` is xterm's alone and always reads bit 8 as Meta.
+- **An upper-case letter without Shift in xterm's forms is Caps Lock**:
+  `CSI 27 ; 5 ; 72 ~` is Ctrl+h with `CAPS_LOCK` in the state, not Ctrl+Shift+h,
+  so binds on Ctrl+h hold with Caps Lock on.
 - **xterm's `formatOtherKeys` (`CSI key ; mods u`) is indistinguishable from
   kitty's**, so it decodes with `KeyEncoding::Kitty`.
 - **Alt+\[ typed with a final byte in the same read** (`ESC [ a`) decodes as a

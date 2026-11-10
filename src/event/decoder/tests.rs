@@ -45,6 +45,17 @@ fn key(bytes: &[u8]) -> KeyEvent {
     }
 }
 
+/// The one key event in `bytes`, decoded with the kitty protocol on.
+fn kitty_on(bytes: &[u8]) -> KeyEvent {
+    let mut decoder = Decoder::new();
+    decoder.set_kitty_keyboard(true);
+    decoder.feed(bytes);
+    match drain(&mut decoder).as_slice() {
+        [Event::Key(key)] => key.clone(),
+        events => panic!("{bytes:?}: {events:?}"),
+    }
+}
+
 fn legacy(key: KeyCode, modifiers: KeyModifiers) -> KeyEvent {
     KeyEvent::new(key, modifiers).with_encoding(KeyEncoding::Legacy)
 }
@@ -169,8 +180,43 @@ fn legacy_cursor_and_function_keys() {
 }
 
 #[test]
-fn legacy_modifier_bit_8_is_super_as_kitty_sends_it() {
-    assert_eq!(key(b"\x1B[1;9A"), legacy(KeyCode::Up, KeyModifiers::SUPER));
+fn modifier_bit_8_is_meta_as_xterm_sends_it() {
+    let meta = KeyModifiers::META;
+    assert_eq!(key(b"\x1B[1;9A"), legacy(KeyCode::Up, meta));
+    assert_eq!(key(b"\x1B[3;13~"), legacy(KeyCode::Delete, meta | CTRL));
+    assert_eq!(key(b"\x1BO9P"), legacy(KeyCode::F(1), meta));
+    // formatOtherKeys: xterm's CSI u.
+    assert_eq!(key(b"\x1B[97;9u").modifiers, meta);
+}
+
+#[test]
+fn modifier_bit_8_is_super_under_the_kitty_protocol() {
+    let sup = KeyModifiers::SUPER;
+    assert_eq!(kitty_on(b"\x1B[1;9A"), legacy(KeyCode::Up, sup));
+    assert_eq!(kitty_on(b"\x1B[3;13~"), legacy(KeyCode::Delete, sup | CTRL));
+    assert_eq!(kitty_on(b"\x1BO9P"), legacy(KeyCode::F(1), sup));
+    assert_eq!(kitty_on(b"\x1B[97;9u").modifiers, sup);
+    // Only kitty sends a kind, or a bit above xterm's, so those are kitty's
+    // even with the protocol not known to be on.
+    assert_eq!(
+        key(b"\x1B[1;9:1A"),
+        legacy(KeyCode::Up, sup).with_kind(KeyEventKind::Press)
+    );
+    assert_eq!(key(b"\x1B[1;25A").modifiers, sup | KeyModifiers::HYPER);
+}
+
+#[test]
+fn keyboard_flags_answer_says_whether_the_kitty_protocol_is_on() {
+    let mut decoder = Decoder::new();
+    decoder.feed(b"\x1B[?1u\x1B[1;9A\x1B[?0u\x1B[1;9A");
+    let mods: Vec<_> = drain(&mut decoder)
+        .into_iter()
+        .filter_map(|event| match event {
+            Event::Key(key) => Some(key.modifiers),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(mods, [KeyModifiers::SUPER, KeyModifiers::META]);
 }
 
 // ── tmxr's crossterm fork, each fix ─────────────────────────────────────────
@@ -337,7 +383,7 @@ fn kitty_modifiers_and_lock_keys() {
         event.state,
         KeyEventState::CAPS_LOCK | KeyEventState::NUM_LOCK
     );
-    let event = key(b"\x1B[97;9u");
+    let event = kitty_on(b"\x1B[97;9u");
     assert_eq!(event.modifiers, KeyModifiers::SUPER);
     let event = key(b"\x1B[97;17u");
     assert_eq!(event.modifiers, KeyModifiers::HYPER);
@@ -505,6 +551,35 @@ fn xterm_modify_other_keys() {
     assert_eq!(
         (event.logical_char(), event.logical_modifiers()),
         (Some('A'), ALT)
+    );
+}
+
+#[test]
+fn xterm_caps_lock_letter_is_not_shift() {
+    // Caps Lock on: xterm sends Ctrl+h with the upper-case code and no
+    // Shift, in both of its forms.
+    let caps = KeyEventState::CAPS_LOCK;
+    for (bytes, encoding) in [
+        (&b"\x1B[27;5;72~"[..], KeyEncoding::Xterm),
+        (b"\x1B[72;5u", KeyEncoding::Kitty),
+    ] {
+        let event = key(bytes);
+        assert_eq!(
+            event,
+            KeyEvent::new(KeyCode::Char('h'), CTRL)
+                .with_state(caps)
+                .with_encoding(encoding),
+            "{bytes:?}"
+        );
+        assert_eq!(event.logical_char(), Some('h'));
+        assert_eq!(event.logical_modifiers(), CTRL);
+    }
+    // With Shift it is still the shifted letter.
+    assert_eq!(
+        key(b"\x1B[27;6;72~"),
+        KeyEvent::new(KeyCode::Char('h'), CTRL | SHIFT)
+            .with_shifted(Some('H'))
+            .with_encoding(KeyEncoding::Xterm)
     );
 }
 

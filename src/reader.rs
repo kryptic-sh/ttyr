@@ -138,6 +138,14 @@ impl Reader {
         self.escape_timeout = timeout;
     }
 
+    /// Says whether the kitty keyboard protocol is on, which decides what
+    /// modifier bit 8 is: see [`Decoder::set_kitty_keyboard`]. A program that
+    /// pushes kitty flags calls this, unless it reads the terminal's answer
+    /// to a flags query after pushing them, which sets it too.
+    pub fn set_kitty_keyboard(&mut self, on: bool) {
+        self.queue.decoder.set_kitty_keyboard(on);
+    }
+
     /// A handle that wakes this reader from another thread.
     pub fn waker(&self) -> Waker {
         Waker(self.source.waker())

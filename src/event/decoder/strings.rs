@@ -1,7 +1,7 @@
 //! The string sequences terminals answer with: OSC colour answers and
 //! XTVERSION's DCS.
 
-use super::{ESC, Parsed, parse_alt};
+use super::{ESC, Input, Parsed, parse_alt};
 use crate::event::{ColorSlot, Event, Report, TerminalColor};
 
 /// The longest string sequence read before it is given up as noise.
@@ -67,13 +67,21 @@ fn parse_string(buf: &[u8], read: impl FnOnce(&[u8]) -> Option<Event>) -> Parsed
 }
 
 /// `ESC ]` and a digit: an OSC answer, or Alt+] and typing after it.
-pub(super) fn parse_osc(buf: &[u8]) -> Parsed {
+pub(super) fn parse_osc(buf: &[u8], input: Input) -> Parsed {
     let body = &buf[2..];
     let digits = body.iter().take_while(|b| b.is_ascii_digit()).count();
     match body.get(digits) {
         None if digits <= MAX_OSC_DIGITS => return Parsed::Incomplete,
         Some(b';') if digits <= MAX_OSC_DIGITS => {}
-        _ => return parse_alt(buf, false),
+        _ => {
+            return parse_alt(
+                buf,
+                Input {
+                    at_end: false,
+                    ..input
+                },
+            );
+        }
     }
     parse_string(buf, |text| {
         let color = terminal_color(std::str::from_utf8(text).ok()?)?;
@@ -149,11 +157,19 @@ fn three<'a>(
 }
 
 /// `ESC P >`: XTVERSION's answer, `DCS > | text ST`, or Alt+P and typing.
-pub(super) fn parse_dcs(buf: &[u8]) -> Parsed {
+pub(super) fn parse_dcs(buf: &[u8], input: Input) -> Parsed {
     match buf.get(3) {
         None => return Parsed::Incomplete,
         Some(b'|') => {}
-        Some(_) => return parse_alt(buf, false),
+        Some(_) => {
+            return parse_alt(
+                buf,
+                Input {
+                    at_end: false,
+                    ..input
+                },
+            );
+        }
     }
     parse_string(buf, |text| {
         let version = std::str::from_utf8(&text[2..]).ok()?;

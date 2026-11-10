@@ -6,7 +6,7 @@ mod strings;
 mod tests;
 
 use super::console::{ConsoleKeys, KeyRecord};
-use super::{Event, KeyCode, KeyEncoding, KeyEvent, KeyEventState, KeyModifiers};
+use super::{Event, KeyCode, KeyEncoding, KeyEvent, KeyEventState, KeyModifiers, Report};
 
 const ESC: u8 = 0x1B;
 
@@ -47,6 +47,9 @@ pub struct Decoder {
     /// What spans win32-input-mode's key records: the key held, and half a
     /// surrogate pair.
     console: ConsoleKeys,
+    /// Whether the kitty keyboard protocol is on, which decides what a
+    /// key's modifier bit 8 is.
+    kitty_keyboard: bool,
 }
 
 impl Decoder {
@@ -80,12 +83,29 @@ impl Decoder {
         self.decode(true)
     }
 
+    /// Says whether the kitty keyboard protocol is on: off by default, and
+    /// set by the terminal's answer to
+    /// [`RequestKeyboardEnhancementFlags`](crate::terminal::RequestKeyboardEnhancementFlags)
+    /// as it is decoded.
+    ///
+    /// It decides what bit 8 of a key's modifier value is (`CSI 1 ; 9 A`):
+    /// Super under the kitty protocol, Meta in xterm's encoding, which
+    /// terminals use when it is off. A program that turns the protocol on
+    /// says so here, or Super arrives as Meta.
+    pub fn set_kitty_keyboard(&mut self, on: bool) {
+        self.kitty_keyboard = on;
+    }
+
     /// Whether bytes are held that are not an event yet.
     pub fn has_pending(&self) -> bool {
         self.start < self.buf.len()
     }
 
     fn decode(&mut self, at_end: bool) -> Option<Event> {
+        let input = Input {
+            at_end,
+            kitty: self.kitty_keyboard,
+        };
         loop {
             let pending = &self.buf[self.start..];
             if let Some(scanned) = self.paste_scanned {
@@ -94,9 +114,12 @@ impl Decoder {
             if pending.is_empty() {
                 return None;
             }
-            match parse(pending, at_end) {
+            match parse(pending, input) {
                 Parsed::Event(event, len) => {
                     self.start += len;
+                    if let Event::Report(Report::KeyboardEnhancementFlags(flags)) = &event {
+                        self.kitty_keyboard = !flags.is_empty();
+                    }
                     return Some(event);
                 }
                 Parsed::PasteStart(len) => {
@@ -133,6 +156,15 @@ impl Decoder {
     }
 }
 
+/// What reading the bytes depends on besides them.
+#[derive(Debug, Clone, Copy)]
+struct Input {
+    /// Whether the bytes are all there is, for now.
+    at_end: bool,
+    /// Whether the kitty keyboard protocol is on.
+    kitty: bool,
+}
+
 /// What the bytes at the front of the input are.
 #[derive(Debug, PartialEq)]
 enum Parsed {
@@ -158,10 +190,10 @@ impl Parsed {
 }
 
 /// The first event in `buf`, which is not empty.
-fn parse(buf: &[u8], at_end: bool) -> Parsed {
+fn parse(buf: &[u8], input: Input) -> Parsed {
     let legacy = |key, modifiers| Parsed::key(legacy_key(key, modifiers), 1);
     match buf[0] {
-        ESC => parse_esc(buf, at_end),
+        ESC => parse_esc(buf, input),
         b'\r' => legacy(KeyCode::Enter, KeyModifiers::NONE),
         b'\t' => legacy(KeyCode::Tab, KeyModifiers::NONE),
         0x7F => legacy(KeyCode::Backspace, KeyModifiers::NONE),
@@ -232,9 +264,9 @@ fn parse_utf8(buf: &[u8]) -> Parsed {
 }
 
 /// What starts with `ESC`.
-fn parse_esc(buf: &[u8], at_end: bool) -> Parsed {
+fn parse_esc(buf: &[u8], input: Input) -> Parsed {
     let Some(&second) = buf.get(1) else {
-        return if at_end {
+        return if input.at_end {
             Parsed::key(legacy_key(KeyCode::Esc, KeyModifiers::NONE), 1)
         } else {
             Parsed::Incomplete
@@ -244,25 +276,25 @@ fn parse_esc(buf: &[u8], at_end: bool) -> Parsed {
     // the end of the input they are the key.
     let starts_sequence = matches!(second, b'[' | b'O' | b']' | b'P');
     if starts_sequence && buf.len() == 2 {
-        return if at_end {
-            parse_alt(buf, at_end)
+        return if input.at_end {
+            parse_alt(buf, input)
         } else {
             Parsed::Incomplete
         };
     }
     match second {
-        b'[' => csi::parse(buf, at_end),
-        b'O' => parse_ss3(buf),
-        b']' if buf[2].is_ascii_digit() => strings::parse_osc(buf),
-        b'P' if buf[2] == b'>' => strings::parse_dcs(buf),
-        _ => parse_alt(buf, at_end),
+        b'[' => csi::parse(buf, input),
+        b'O' => parse_ss3(buf, input.kitty),
+        b']' if buf[2].is_ascii_digit() => strings::parse_osc(buf, input),
+        b'P' if buf[2] == b'>' => strings::parse_dcs(buf, input),
+        _ => parse_alt(buf, input),
     }
 }
 
 /// `ESC` and a key: that key with Alt. `ESC` before anything else is
 /// Escape, and what follows is read on its own.
-fn parse_alt(buf: &[u8], at_end: bool) -> Parsed {
-    match parse(&buf[1..], at_end) {
+fn parse_alt(buf: &[u8], input: Input) -> Parsed {
+    match parse(&buf[1..], input) {
         Parsed::Event(Event::Key(mut key), len) => {
             key.modifiers |= KeyModifiers::ALT;
             Parsed::key(key, len + 1)
@@ -276,7 +308,7 @@ fn parse_alt(buf: &[u8], at_end: bool) -> Parsed {
 
 /// SS3, `ESC O [mods] final`: cursor keys, F1 to F4 and the keypad in
 /// application mode, and rxvt's Ctrl+arrows.
-fn parse_ss3(buf: &[u8]) -> Parsed {
+fn parse_ss3(buf: &[u8], kitty: bool) -> Parsed {
     let digits = buf[2..].iter().take_while(|b| b.is_ascii_digit()).count();
     let Some(&last) = buf.get(2 + digits) else {
         return if digits > 2 {
@@ -289,7 +321,7 @@ fn parse_ss3(buf: &[u8]) -> Parsed {
     let (mut modifiers, state) = match &buf[2..2 + digits] {
         [] => (KeyModifiers::NONE, KeyEventState::NONE),
         mods => match std::str::from_utf8(mods).ok().and_then(|s| s.parse().ok()) {
-            Some(value) => csi::kitty_modifiers(value),
+            Some(value) => csi::modifiers_value(value, kitty),
             None => return Parsed::unknown(&buf[..len]),
         },
     };

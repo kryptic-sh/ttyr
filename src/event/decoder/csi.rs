@@ -1,7 +1,7 @@
 //! CSI sequences: keys in every encoding, the mouse, focus, paste and the
 //! terminal's reports.
 
-use super::{Parsed, char_key, legacy_key, parse_alt};
+use super::{Input, Parsed, char_key, legacy_key, parse_alt, single_lower};
 use crate::event::console::KeyRecord;
 use crate::event::{
     ColorScheme, Event, KeyCode, KeyEncoding, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers,
@@ -18,7 +18,7 @@ const MAX_CSI: usize = 256;
 type Params = Vec<Vec<Option<u32>>>;
 
 /// What starts with `ESC [`, at least one byte after it.
-pub(super) fn parse(buf: &[u8], at_end: bool) -> Parsed {
+pub(super) fn parse(buf: &[u8], input: Input) -> Parsed {
     // The Linux console's F1 to F5: CSI [ A to CSI [ E.
     if buf[2] == b'[' {
         return match buf.get(3) {
@@ -44,7 +44,7 @@ pub(super) fn parse(buf: &[u8], at_end: bool) -> Parsed {
             return Parsed::unknown(capped);
         }
         // rxvt's Shift+key, `CSI n $`, ends where a standard sequence goes on.
-        if at_end && &buf[params_end..] == b"$" {
+        if input.at_end && &buf[params_end..] == b"$" {
             return rxvt_shift_key(buf, params_end);
         }
         return Parsed::Incomplete;
@@ -52,7 +52,7 @@ pub(super) fn parse(buf: &[u8], at_end: bool) -> Parsed {
     if !(0x40..=0x7E).contains(&last) {
         // Not a sequence after all: ESC [ alone is Alt+[.
         return if final_at == 2 {
-            parse_alt(buf, at_end)
+            parse_alt(buf, input)
         } else {
             Parsed::unknown(&buf[..final_at])
         };
@@ -69,7 +69,7 @@ pub(super) fn parse(buf: &[u8], at_end: bool) -> Parsed {
             _ => Parsed::Incomplete,
         };
     }
-    match dispatch(params, intermediates, last) {
+    match dispatch(params, intermediates, last, input.kitty) {
         Some(Dispatched::Event(event)) => Parsed::Event(event, len),
         Some(Dispatched::PasteStart) => Parsed::PasteStart(len),
         Some(Dispatched::ConsoleKey(record)) => Parsed::ConsoleKey(record, len),
@@ -118,7 +118,8 @@ fn console_record(params: &Params) -> Option<KeyRecord> {
 }
 
 /// A whole CSI sequence's meaning, or `None` for one ttyr does not decode.
-fn dispatch(params: &[u8], intermediates: &[u8], last: u8) -> Option<Dispatched> {
+/// `kitty` says whether the kitty keyboard protocol is on.
+fn dispatch(params: &[u8], intermediates: &[u8], last: u8, kitty: bool) -> Option<Dispatched> {
     let (private, params) = match params.first() {
         Some(&p @ b'<'..=b'?') => (Some(p), &params[1..]),
         _ => (None, params),
@@ -132,11 +133,11 @@ fn dispatch(params: &[u8], intermediates: &[u8], last: u8) -> Option<Dispatched>
     let report = |report| Some(Dispatched::Event(Event::Report(report)));
     let event = match (private, intermediates, last) {
         (None, b"", b'_') => return console_record(&params).map(Dispatched::ConsoleKey),
-        (None, b"", b'u') => Event::Key(kitty_key(&params)?),
+        (None, b"", b'u') => Event::Key(kitty_key(&params, kitty)?),
         (None, b"", b'~') => match p(0) {
             Some(200) => return Some(Dispatched::PasteStart),
             Some(27) if params.len() == 3 => Event::Key(xterm_key(&params)?),
-            _ => Event::Key(tilde_key(&params)?),
+            _ => Event::Key(tilde_key(&params, kitty)?),
         },
         (None, b"", b'R') if params.len() == 2 => {
             return report(Report::CursorPosition {
@@ -144,7 +145,9 @@ fn dispatch(params: &[u8], intermediates: &[u8], last: u8) -> Option<Dispatched>
                 column: one_based(p(1)?)?,
             });
         }
-        (None, b"", b'A'..=b'H' | b'P'..=b'S' | b'Z') => Event::Key(letter_key(&params, last)?),
+        (None, b"", b'A'..=b'H' | b'P'..=b'S' | b'Z') => {
+            Event::Key(letter_key(&params, last, kitty)?)
+        }
         (None, b"", b'I') if params.is_empty() => Event::FocusGained,
         (None, b"", b'O') if params.is_empty() => Event::FocusLost,
         (None, b"", b'M') => Event::Mouse(rxvt_mouse(&params)?),
@@ -244,13 +247,18 @@ fn one_based(value: u32) -> Option<u16> {
 }
 
 /// The modifiers and kind in a key sequence's parameter `mods:kind`: its
-/// absence is no modifiers and a press.
+/// absence is no modifiers and a press. A kind is sent only under the kitty
+/// protocol, so with one the modifiers are kitty's whatever `kitty` says.
 fn modifiers_param(
     params: &Params,
     i: usize,
+    kitty: bool,
 ) -> Option<(KeyModifiers, KeyEventState, KeyEventKind)> {
     let values = params.get(i).map_or(&[][..], Vec::as_slice);
-    let (modifiers, state) = kitty_modifiers(values.first().copied().flatten().unwrap_or(1));
+    let (modifiers, state) = modifiers_value(
+        values.first().copied().flatten().unwrap_or(1),
+        kitty || values.len() > 1,
+    );
     let kind = match values.get(1).copied().flatten().unwrap_or(1) {
         1 => KeyEventKind::Press,
         2 => KeyEventKind::Repeat,
@@ -260,11 +268,21 @@ fn modifiers_param(
     Some((modifiers, state, kind))
 }
 
-/// The kitty protocol's (and xterm's legacy keys') modifier value, `1 +`
-/// the bits Shift 1, Alt 2, Ctrl 4, Super 8, Hyper 16, Meta 32, Caps Lock 64,
-/// Num Lock 128. xterm's own bit 8 is Meta, but only `CSI 27 ; mods ; key ~`
-/// is xterm's alone; a legacy key's modifiers are read as kitty sends them.
-pub(super) fn kitty_modifiers(value: u32) -> (KeyModifiers, KeyEventState) {
+/// A key's modifier value, read as the kitty protocol sends it when `kitty`
+/// says it is on, else as xterm does. The two share Shift, Alt and Ctrl, but
+/// bit 8 is kitty's Super and xterm's Meta. A value with a bit only kitty
+/// sends is kitty's either way.
+pub(super) fn modifiers_value(value: u32, kitty: bool) -> (KeyModifiers, KeyEventState) {
+    let (modifiers, state) = kitty_modifiers(value);
+    if kitty || value.saturating_sub(1) >= 16 {
+        return (modifiers, state);
+    }
+    (xterm_modifiers(value), state)
+}
+
+/// The kitty protocol's modifier value, `1 +` the bits Shift 1, Alt 2,
+/// Ctrl 4, Super 8, Hyper 16, Meta 32, Caps Lock 64, Num Lock 128.
+fn kitty_modifiers(value: u32) -> (KeyModifiers, KeyEventState) {
     let bits = value.saturating_sub(1);
     let mut modifiers = NONE;
     let mut state = KeyEventState::NONE;
@@ -306,16 +324,18 @@ fn xterm_modifiers(value: u32) -> KeyModifiers {
     modifiers
 }
 
-/// The kitty protocol's `CSI key:shifted:base ; mods:kind ; text u`.
-fn kitty_key(params: &Params) -> Option<KeyEvent> {
+/// The kitty protocol's `CSI key:shifted:base ; mods:kind ; text u`, which
+/// xterm's `formatOtherKeys` sends too, with its own modifier bits when
+/// `kitty` says the protocol is off.
+fn kitty_key(params: &Params, kitty: bool) -> Option<KeyEvent> {
     let codes = params.first()?;
     let code = codes.first().copied().flatten()?;
-    let (modifiers, lock_state, kind) = modifiers_param(params, 1)?;
+    let (modifiers, lock_state, kind) = modifiers_param(params, 1, kitty)?;
     let shift = modifiers.contains(KeyModifiers::SHIFT);
     let mut event = match functional_key(code) {
         Some((key, state)) => KeyEvent::new(key, modifiers).with_state(state),
         None => match control_key(code, shift)? {
-            KeyCode::Char(c) => char_key(c, modifiers, KeyEncoding::Kitty),
+            KeyCode::Char(c) => modified_char_key(c, modifiers, KeyEncoding::Kitty),
             key => KeyEvent::new(key, modifiers),
         },
     };
@@ -344,10 +364,25 @@ fn xterm_key(params: &Params) -> Option<KeyEvent> {
     let value = |i: usize| params.get(i)?.first().copied().flatten();
     let modifiers = xterm_modifiers(value(1).unwrap_or(1));
     let event = match control_key(value(2)?, modifiers.contains(KeyModifiers::SHIFT))? {
-        KeyCode::Char(c) => char_key(c, modifiers, KeyEncoding::Xterm),
+        KeyCode::Char(c) => modified_char_key(c, modifiers, KeyEncoding::Xterm),
         key => KeyEvent::new(key, modifiers),
     };
     Some(event.with_encoding(KeyEncoding::Xterm))
+}
+
+/// A character sent with its modifiers. An upper-case letter without Shift
+/// was typed with Caps Lock on, as xterm sends Ctrl+h then
+/// (`CSI 27 ; 5 ; 72 ~`): the letter's lower case, with Caps Lock in the
+/// state, as kitty reports it. Otherwise as [`char_key`] reads it.
+fn modified_char_key(c: char, modifiers: KeyModifiers, encoding: KeyEncoding) -> KeyEvent {
+    match single_lower(c) {
+        Some(lower) if !modifiers.contains(KeyModifiers::SHIFT) => {
+            KeyEvent::new(KeyCode::Char(lower), modifiers)
+                .with_state(KeyEventState::CAPS_LOCK)
+                .with_encoding(encoding)
+        }
+        _ => char_key(c, modifiers, encoding),
+    }
 }
 
 /// A code point as a key: the C0 keys by name, Shift+Tab as
@@ -366,11 +401,11 @@ fn control_key(code: u32, shift: bool) -> Option<KeyCode> {
 
 /// The cursor, editing and function keys ending in a letter: `CSI A`,
 /// `CSI 1 ; mods A`, kitty's `CSI 1 ; mods:kind A`.
-fn letter_key(params: &Params, last: u8) -> Option<KeyEvent> {
+fn letter_key(params: &Params, last: u8, kitty: bool) -> Option<KeyEvent> {
     if params.len() > 2 {
         return None;
     }
-    let (mut modifiers, state, kind) = modifiers_param(params, 1)?;
+    let (mut modifiers, state, kind) = modifiers_param(params, 1, kitty)?;
     let key = match last {
         b'A' => KeyCode::Up,
         b'B' => KeyCode::Down,
@@ -390,12 +425,12 @@ fn letter_key(params: &Params, last: u8) -> Option<KeyEvent> {
 }
 
 /// `CSI n ; mods:kind ~`: the editing and function keys.
-fn tilde_key(params: &Params) -> Option<KeyEvent> {
+fn tilde_key(params: &Params, kitty: bool) -> Option<KeyEvent> {
     if params.len() > 2 {
         return None;
     }
     let key = tilde_code(params.first()?.first().copied().flatten()?)?;
-    let (modifiers, state, kind) = modifiers_param(params, 1)?;
+    let (modifiers, state, kind) = modifiers_param(params, 1, kitty)?;
     Some(legacy_key(key, modifiers).with_state(state).with_kind(kind))
 }
 

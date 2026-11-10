@@ -19,9 +19,13 @@ All notable changes to this project are documented here. The format follows
   (with rxvt's and the Linux console's), SGR, X10 and urxvt mouse, bracketed
   paste, focus, and the reports (kitty flags, DA1, DA2, XTVERSION, DECRPM, the
   colour scheme, OSC 4/10/11/12 colours, cursor position, text-area pixels).
-  Unknown sequences and invalid bytes arrive as `Event::Unknown` rather than
-  swallowing what follows them. When a lone `ESC` counts as Escape is the
-  caller's choice (`Decoder::flush_event`).
+  Modifier bit 8 is Super while the kitty protocol is on and xterm's Meta
+  otherwise (`Decoder::set_kitty_keyboard`, `Reader::set_kitty_keyboard`, also
+  set by the terminal's answer to a flags query). In xterm's forms an upper-case
+  letter without Shift is Caps Lock, so Ctrl+h stays Ctrl+h. Unknown sequences
+  and invalid bytes arrive as `Event::Unknown` rather than swallowing what
+  follows them. When a lone `ESC` counts as Escape is the caller's choice
+  (`Decoder::flush_event`).
 - `KeyEvent::logical_char` and `KeyEvent::logical_modifiers`, the character a
   key was meant to type across encodings, and `KeyEvent::normalize_legacy`,
   hjkl-kitty's Ctrl+\[/I/M aliases.
