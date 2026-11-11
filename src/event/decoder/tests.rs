@@ -461,6 +461,11 @@ fn kitty_associated_text() {
         event,
         kitty(KeyCode::Null, NONE).with_text(Some("hi".into()))
     );
+    // An empty text parameter, or an empty value in it, is no text.
+    for bytes in [&b"\x1B[97;1;u"[..], b"\x1B[97;;u", b"\x1B[97;;:u"] {
+        assert_eq!(key(bytes), kitty(KeyCode::Char('a'), NONE), "{bytes:?}");
+    }
+    assert_eq!(key(b"\x1B[97;;97:u").text.as_deref(), Some("a"));
 }
 
 #[test]

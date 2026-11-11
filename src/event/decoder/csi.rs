@@ -349,9 +349,12 @@ fn kitty_key(params: &Params, kitty: bool) -> Option<KeyEvent> {
         });
     }
     if let Some(text) = params.get(2) {
+        // An empty value is no character: the spec leaves empty text out,
+        // and a terminal that sends the field empty means the same.
         let text: String = text
             .iter()
-            .map(|c| c.and_then(char::from_u32))
+            .flatten()
+            .map(|&c| char::from_u32(c))
             .collect::<Option<_>>()?;
         event.text = (!text.is_empty()).then_some(text);
     }

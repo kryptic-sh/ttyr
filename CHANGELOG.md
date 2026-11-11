@@ -8,6 +8,9 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- A kitty `CSI u` key with an empty text parameter, or an empty value in it
+  (`CSI 97 ; 1 ; u`, `CSI 97 ; ; u`), is the key with no text instead of
+  `Event::Unknown`.
 - A bracketed paste whose end marker never comes is no longer held for ever:
   past 16 MiB without one, the decoder gives it up as `Event::Unknown` (its
   start marker and the bytes held) and reads what follows afresh, so memory

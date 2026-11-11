@@ -70,13 +70,6 @@ first within each group.
   phase 07 note about `ToUnicodeEx` covers misread keys, not dropped ones. Fix:
   a US-layout fallback table for the OEM virtual-keys, or `ToUnicodeEx` on
   Windows.
-- **A kitty `CSI u` key with an empty trailing text parameter decodes as
-  `Event::Unknown`.** `kitty_key` (`src/event/decoder/csi.rs`) collects the text
-  parameter with `collect::<Option<String>>()`, so one empty value fails the
-  whole key: `CSI 97 ; 1 ; u` and `CSI 97 ; ; u` are Unknown. Verified by
-  running. The kitty spec omits the text when empty and no terminal is known to
-  send the empty field, so this is robustness, not a seen failure. Fix: skip
-  empty values in the text parameter.
 - **A DA2 or DA1 answer with a value above 65535 decodes as `Event::Unknown`.**
   `flat` (`src/event/decoder/csi.rs`) narrows each parameter to `u16`; a
   terminal whose DA2 version field is larger loses the whole report (foot, for
