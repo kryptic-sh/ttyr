@@ -121,6 +121,23 @@ fn legacy_bytes() {
 }
 
 #[test]
+fn keypad_begin_is_on_the_keypad_in_every_form() {
+    // kitty sends it as `CSI E` (its key_encoding.c), the spec's table as
+    // `CSI 57427 u`, and xterm and rxvt as SS3 or CSI `E`.
+    for bytes in [
+        &b"\x1B[E"[..],
+        b"\x1B[1;5E",
+        b"\x1B[1;1:3E",
+        b"\x1BOE",
+        b"\x1B[57427u",
+    ] {
+        let event = key(bytes);
+        assert_eq!(event.key, KeyCode::KeypadBegin, "{bytes:?}");
+        assert!(event.state.contains(KeyEventState::KEYPAD), "{bytes:?}");
+    }
+}
+
+#[test]
 fn legacy_cursor_and_function_keys() {
     let ctrl_shift = CTRL | SHIFT;
     for (bytes, expected) in [
@@ -128,7 +145,10 @@ fn legacy_cursor_and_function_keys() {
         (b"\x1B[D", legacy(KeyCode::Left, NONE)),
         (b"\x1B[H", legacy(KeyCode::Home, NONE)),
         (b"\x1B[F", legacy(KeyCode::End, NONE)),
-        (b"\x1B[E", legacy(KeyCode::KeypadBegin, NONE)),
+        (
+            b"\x1B[E",
+            legacy(KeyCode::KeypadBegin, NONE).with_state(KeyEventState::KEYPAD),
+        ),
         (b"\x1B[1;5A", legacy(KeyCode::Up, CTRL)),
         (b"\x1B[1;2P", legacy(KeyCode::F(1), SHIFT)),
         (b"\x1B[Z", legacy(KeyCode::BackTab, SHIFT)),

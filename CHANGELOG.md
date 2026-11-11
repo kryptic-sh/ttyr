@@ -33,6 +33,9 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- `KeyCode::KeypadBegin` always carries `KeyEventState::KEYPAD`. kitty's own
+  encoding of the key (`CSI E`, `CSI 1 ; mods E`) and SS3 `ESC O E` came without
+  it, where `CSI 57427 u` and the Windows console's had it.
 - Windows: a mouse mode or `Mode::VirtualTerminalInput` turned on before raw
   mode is off after `restore`, the panic hook and `suspend_with`. Raw mode's
   snapshot of the input mode held their bits on and put them back over the

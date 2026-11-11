@@ -137,13 +137,6 @@ first within each group.
   `shift_and_caps_lock_letters_read_as_the_decoder_reads_them` assert it.
   `Report::TerminalColor`'s doc likewise says answers come "in `rgb:` form"
   where `#` and `rgbi:` are read too. Verified by reading.
-- **`KeypadBegin` carries `KEYPAD` in one form and not the other.**
-  `CSI 57427 u` gets `KeyEventState::KEYPAD` from `functional_key`; kitty's
-  actual encoding of the key, `CSI E` and `CSI 1 ; mods E` (its `key_encoding.c`
-  writes `S(1, 'E')`; the spec table's `57427 ~` row is not what the encoder
-  emits), goes through `letter_key` with no state, as does SS3 `ESC O E`.
-  Verified by running both forms. Fix: `KeypadBegin` is a keypad key by
-  definition, so either always set `KEYPAD` or never.
 - **crossterm pieces a port will look for and not find, with no note saying
   why:** `terminal::SetSize` (`CSI 8 ; rows ; cols t`), `cursor::position()` and
   `supports_keyboard_enhancement` (blocking, left out on purpose per 01's

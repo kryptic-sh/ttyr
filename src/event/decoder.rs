@@ -389,7 +389,10 @@ fn parse_ss3(buf: &[u8], kitty: bool) -> Parsed {
         b'D' => KeyCode::Left,
         b'H' => KeyCode::Home,
         b'F' => KeyCode::End,
-        b'E' => KeyCode::KeypadBegin,
+        b'E' => {
+            keypad = KeyEventState::KEYPAD;
+            KeyCode::KeypadBegin
+        }
         b'P'..=b'S' => KeyCode::F(1 + last - b'P'),
         b'a'..=b'd' => {
             modifiers |= KeyModifiers::CONTROL;

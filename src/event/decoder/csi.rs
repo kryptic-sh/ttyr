@@ -408,13 +408,16 @@ fn letter_key(params: &Params, last: u8, kitty: bool) -> Option<KeyEvent> {
     if params.len() > 2 {
         return None;
     }
-    let (mut modifiers, state, kind) = modifiers_param(params, 1, kitty)?;
+    let (mut modifiers, mut state, kind) = modifiers_param(params, 1, kitty)?;
     let key = match last {
         b'A' => KeyCode::Up,
         b'B' => KeyCode::Down,
         b'C' => KeyCode::Right,
         b'D' => KeyCode::Left,
-        b'E' => KeyCode::KeypadBegin,
+        b'E' => {
+            state |= KeyEventState::KEYPAD;
+            KeyCode::KeypadBegin
+        }
         b'F' => KeyCode::End,
         b'H' => KeyCode::Home,
         b'P'..=b'S' => KeyCode::F(1 + last - b'P'),

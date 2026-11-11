@@ -347,7 +347,8 @@ pub enum KeyCode {
     Pause,
     /// Menu (kitty flag 8).
     Menu,
-    /// The keypad's centre key, Begin.
+    /// The keypad's centre key, Begin: always with
+    /// [`KeyEventState::KEYPAD`], in whichever form it came.
     KeypadBegin,
     /// A media key (kitty flag 8).
     Media(MediaKeyCode),
