@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-11-11
+
 ### Added
 
 - `ttyr::event`: the event types (`Event`, `KeyEvent`, `KeyCode`,
@@ -135,3 +137,6 @@ All notable changes to this project are documented here. The format follows
   managers). `disable_raw_mode`, the guard's `restore` and its panic hook act on
   that terminal.
 - A `serde` feature deriving `Serialize` and `Deserialize` on every event type.
+
+[Unreleased]: https://github.com/kryptic-sh/ttyr/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/kryptic-sh/ttyr/releases/tag/v0.1.0
