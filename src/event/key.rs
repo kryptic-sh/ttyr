@@ -151,7 +151,10 @@ impl KeyEvent {
     /// `1` with Shift, where a terminal that reports `!` gives `!`.
     pub fn chord(&self) -> KeyChord {
         match self.logical() {
-            Some((c, modifiers)) => KeyChord::new(KeyCode::Char(c), modifiers),
+            Some((c, modifiers)) => KeyChord {
+                key: KeyCode::Char(c),
+                modifiers,
+            },
             None => KeyChord {
                 key: self.key,
                 modifiers: self.modifiers,
@@ -163,7 +166,10 @@ impl KeyEvent {
         let shift = self.modifiers.contains(KeyModifiers::SHIFT);
         let without_shift = self.modifiers - KeyModifiers::SHIFT;
         if let Some(c) = self.text.as_deref().and_then(single_char) {
-            let carries_shift = shift && Some(c) != self.key_char();
+            // Shift went into the text where it changed the key, and also
+            // into a letter that stayed as it was, which Caps Lock undid.
+            let letter = single_upper(c).is_some() || single_lower(c).is_some();
+            let carries_shift = shift && (Some(c) != self.key_char() || letter);
             return Some((
                 c,
                 if carries_shift {

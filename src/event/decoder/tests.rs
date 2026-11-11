@@ -555,6 +555,16 @@ fn the_same_keypress_is_one_chord_from_every_encoding() {
             ],
         ),
         (ctrl_bang, &[b"\x1B[27;6;33~", b"\x1B[49:33;6u"]),
+        // Shift with Caps Lock on types `a`.
+        (
+            chord(KeyCode::Char('a'), NONE),
+            &[
+                b"a",
+                b"\x1B[97;66u",
+                b"\x1B[97;66;97u",
+                b"\x1B[65;30;97;1;144;1_",
+            ],
+        ),
     ] {
         for &bytes in forms {
             let event = key(bytes);
@@ -571,6 +581,30 @@ fn the_same_keypress_is_one_chord_from_every_encoding() {
     assert_eq!(event.chord(), ctrl_shift_h);
     assert_eq!(event.chord().key, KeyCode::Char('H'));
     assert_eq!(event.chord().modifiers, CTRL);
+}
+
+#[test]
+fn a_binding_and_the_event_it_means_are_one_chord() {
+    // KeyChord::new on a binding as a keymap writes it, and chord() on the
+    // event a terminal sends for it.
+    for (written, bytes) in [
+        (KeyChord::new(KeyCode::Char('Q'), NONE), &b"\x1B[113;2u"[..]),
+        (KeyChord::new(KeyCode::Char('Q'), SHIFT), b"\x1B[113;2u"),
+        (KeyChord::new(KeyCode::Char('q'), SHIFT), b"Q"),
+        (
+            KeyChord::new(KeyCode::Char('h'), CTRL | SHIFT),
+            b"\x1B[104;6u",
+        ),
+        (KeyChord::new(KeyCode::Char('H'), CTRL), b"\x1B[104:72;6u"),
+        (KeyChord::new(KeyCode::Char('1'), SHIFT), b"\x1B[49;2u"),
+        (KeyChord::new(KeyCode::Char('!'), NONE), b"\x1B[49:33;2u"),
+        (KeyChord::new(KeyCode::Char('A'), NONE), b"\x1B[97;65u"),
+        (KeyChord::new(KeyCode::Char('a'), NONE), b"\x1B[97;66;97u"),
+        (KeyChord::new(KeyCode::Char('a'), CTRL), b"\x1B[97;69u"),
+        (KeyChord::new(KeyCode::Up, CTRL), b"\x1B[1;5A"),
+    ] {
+        assert_eq!(key(bytes).chord(), written, "{bytes:?}");
+    }
 }
 
 #[test]

@@ -42,6 +42,9 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- `KeyEvent::logical_modifiers` drops Shift for a kitty key whose text (flag 16)
+  is the letter itself, typed with Shift and Caps Lock (`CSI 97 ; 66 ; 97 u`):
+  Caps Lock undid Shift, so the key is plain `a`, as without flag 16.
 - Windows: a title-case letter from the console (`ǅ`) is the key as typed, as
   the decoder reads it from a terminal, instead of its lower case.
 - `KeyCode::KeypadBegin` always carries `KeyEventState::KEYPAD`. kitty's own
