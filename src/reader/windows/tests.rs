@@ -402,14 +402,46 @@ fn collect_answers_returns_a_wake_that_comes_while_it_waits() {
     });
     let answers = reader.collect_answers(LONG).unwrap();
     answering.join().unwrap();
+    // The wake did not end the wait: DA1's answer came, last.
     assert!(answers.complete);
-    assert_eq!(
-        answers.events,
-        [
-            Event::Wake,
-            Event::Report(Report::PrimaryDeviceAttributes(vec![62])),
-        ]
-    );
+    let da1 = Event::Report(Report::PrimaryDeviceAttributes(vec![62]));
+    assert_eq!(answers.events.last(), Some(&da1));
+    // The wake came first, unless a loaded machine delayed the reader past
+    // both, when the answer is read first and the wake is left.
+    if answers.events.len() == 2 {
+        assert_eq!(answers.events[0], Event::Wake);
+    } else {
+        assert_eq!(answers.events, [da1]);
+        assert_eq!(reader.read().unwrap(), Event::Wake);
+    }
+}
+
+#[test]
+fn wakes_that_fill_the_pipe_are_one_event() {
+    let _console = console();
+    let mut reader = Reader::open().unwrap();
+    let waker = reader.waker();
+    // An event, not a pipe: it holds one wake however many come.
+    for _ in 0..100_000 {
+        waker.wake().unwrap();
+    }
+    assert_eq!(reader.read().unwrap(), Event::Wake);
+    assert!(!reader.poll(Duration::ZERO).unwrap());
+}
+
+#[test]
+fn the_kitty_protocol_decides_what_bit_8_is() {
+    let _console = console();
+    let _vt = VtInput::on();
+    let mut reader = Reader::open().unwrap();
+    let up = |modifiers| {
+        Event::Key(KeyEvent::new(KeyCode::Up, modifiers).with_encoding(KeyEncoding::Legacy))
+    };
+    type_vt("\x1B[1;9A");
+    assert_eq!(reader.read().unwrap(), up(KeyModifiers::META));
+    reader.set_kitty_keyboard(true);
+    type_vt("\x1B[1;9A");
+    assert_eq!(reader.read().unwrap(), up(KeyModifiers::SUPER));
 }
 
 #[test]

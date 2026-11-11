@@ -197,3 +197,24 @@ fn commands_go_through_the_backend_in_order() {
         "\x1B[6 q\x1B[1;1H"
     );
 }
+
+#[test]
+fn the_writer_is_the_one_drawn_to() {
+    let mut backend = TtyrBackend::new(Vec::new());
+    backend.set_cursor_position((1, 1)).unwrap();
+    let drawn = backend.writer().clone();
+    assert!(!drawn.is_empty());
+    backend.writer_mut().clear();
+    assert!(backend.writer().is_empty());
+}
+
+#[cfg(windows)]
+#[test]
+fn the_size_is_the_consoles() {
+    let _console = crate::test_console::console();
+    let mut backend = TtyrBackend::new(Vec::new());
+    let size = backend.size().unwrap();
+    assert_eq!((size.width, size.height), crate::terminal::size().unwrap());
+    let window = backend.window_size().unwrap();
+    assert_eq!(window.columns_rows, size);
+}

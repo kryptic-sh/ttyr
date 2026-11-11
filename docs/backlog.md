@@ -53,47 +53,24 @@ first within each group.
 
 ### Test coverage
 
-- **Everything that opens the controlling terminal has no test on any
-  platform.** `terminal::size`, `window_size`, `enable_raw_mode`,
-  `Reader::open`, `open_tty`, `panic_output`'s `/dev/tty` fallback,
-  `TtyrBackend::size` and `window_size` (`src/terminal/unix.rs`,
-  `src/reader.rs`, `src/backend.rs`) all need a controlling tty, which the pty
-  tests and CI do not have; the tests use the `_of`, `_with`, `_on` and
-  `from_fd` forms instead. These are the entry points every consumer calls.
-  Evidence: the uncovered lines in the coverage run (`terminal/unix.rs` at
-  75.34% of lines is these functions). Fix: a test that forks a child, puts it
-  in a new session on the pty (`setsid`, then `ioctl_tiocsctty` in rustix),
-  calls them there and reports the results through a pipe. On Windows
-  `AllocConsole` gives the tests a console, so `Reader::open`, `terminal::size`
-  and `enable_raw_mode` are covered there; the backend's `size` and
-  `window_size` are not covered on any platform.
 - **The `serde` feature has no test.** Nothing serializes an `Event` and reads
   it back; `cargo test --all-features` only compiles the derives. tmxr sends
   `Event`s between its client and server with it. A round trip needs a format
   crate as a dev-dependency (`serde_json` or the `postcard` tmxr uses), the
   owner's call.
-- **The reader's signal and interrupt paths are untested.** `EINTR` from
-  `select` and from `read`, a full wake pipe (`WouldBlock` in
-  `WakeHandle::wake`) and `drain`'s branches (`src/reader/unix.rs`) are
-  uncovered; the Windows `WAIT_FAILED` and unexpected-result arms likewise. Hard
-  to drive deterministically; recorded as a gap, not reviewed.
-- **The timing-dependent pty tests are the likeliest source of the one
-  unexplained failure** (see Unexplained). `sigwinch_with_input_keeps_both`
-  (`src/reader/tests.rs`) sleeps 50 ms and expects both the byte and the signal
-  to have landed; `collect_answers_returns_a_wake_that_comes_while_it_waits` and
-  `a_waker_wakes_a_wait_from_another_thread` sleep before acting;
-  `a_timed_out_poll_returns_false_promptly` bounds the wait with `LONG`. Under a
-  load average in the teens any of these can miss. Fix: wait on observable state
-  (poll until both events are in) instead of a fixed sleep, and keep the name if
-  one fails again.
-- **Tested on one platform only, or not at all, among the public API:**
-  `terminal::suspend` (nowhere, recorded under phase 04); `Reader::open` and
-  `Reader::set_kitty_keyboard` (nowhere); `TtyrBackend::writer` and `writer_mut`
-  (nowhere, trivial); `Mode::VirtualTerminalInput` (Windows only, as it exists
-  only there). The reader tests themselves are mirrored name for name between
-  `src/reader/tests.rs` and `src/reader/windows/tests.rs`, and the console
-  record mapping (`src/event/console`) is tested on every platform, so the
-  decoder and the guard's record have no platform gap.
+- **The reader's interrupt and failure paths are untested, and cannot be driven
+  deterministically.** `EINTR` from `select` and from `read`, and the
+  `Interrupted` arm of `drain` (`src/reader/unix.rs`), need a signal to land
+  inside that one system call; the Windows `WAIT_FAILED` and unexpected-result
+  arms of `Source::wait` (`src/reader/windows.rs`) need the wait itself to fail.
+  A test that raises a signal and hopes would pass whether or not the arm ran,
+  so none was written. A full wake pipe (`WouldBlock` in `WakeHandle::wake`) is
+  tested (`wakes_that_fill_the_pipe_are_one_event`).
+- **The Windows tests added since 0.1.0 have not run**: they compile for
+  `x86_64-pc-windows-gnu` here and run only in CI. In particular
+  `a_console_that_fails_*` in `src/terminal/guard/tests/windows.rs` free the
+  test process's console (`FreeConsole`) and allocate a new one, which no test
+  did before.
 
 ### Code quality
 

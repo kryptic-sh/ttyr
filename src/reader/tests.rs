@@ -157,12 +157,12 @@ fn sigwinch_with_input_keeps_both() {
     let mut reader = Reader::from_fd(tty).unwrap();
     term.write_all(b"x").unwrap();
     signal_hook::low_level::raise(signal_hook::consts::SIGWINCH).unwrap();
-    // Wait until both are in, then read both, in either order.
-    thread::sleep(Duration::from_millis(50));
-    let mut events = vec![reader.read().unwrap()];
-    while reader.poll(Duration::from_millis(50)).unwrap() {
+    // Both, in either order, however long they take to land; then nothing.
+    let mut events = Vec::new();
+    while events.len() < 2 && reader.poll(LONG).unwrap() {
         events.push(reader.read().unwrap());
     }
+    assert!(!reader.poll(Duration::from_millis(50)).unwrap());
     assert_eq!(events.len(), 2, "{events:?}");
     assert!(events.contains(&key(KeyCode::Char('x'))));
     assert!(events.iter().any(|e| matches!(e, Event::Resize(..))));
@@ -344,12 +344,45 @@ fn collect_answers_returns_a_wake_that_comes_while_it_waits() {
     });
     let answers = reader.collect_answers(LONG).unwrap();
     let _term = answering.join().unwrap();
+    // The wake did not end the wait: DA1's answer came, last.
     assert!(answers.complete);
-    assert_eq!(
-        answers.events,
-        [
-            Event::Wake,
-            Event::Report(Report::PrimaryDeviceAttributes(vec![62])),
-        ]
-    );
+    let da1 = Event::Report(Report::PrimaryDeviceAttributes(vec![62]));
+    assert_eq!(answers.events.last(), Some(&da1));
+    // The wake came first, unless a loaded machine delayed the reader past
+    // both, when the one wait reads the answer first and leaves the wake.
+    if answers.events.len() == 2 {
+        assert_eq!(answers.events[0], Event::Wake);
+    } else {
+        assert_eq!(answers.events, [da1]);
+        assert_eq!(reader.read().unwrap(), Event::Wake);
+    }
+}
+
+#[test]
+fn wakes_that_fill_the_pipe_are_one_event() {
+    let _serial = serial();
+    let (_term, tty) = pty();
+    let mut reader = Reader::from_fd(tty).unwrap();
+    let waker = reader.waker();
+    // Far more than the pipe holds: a full pipe already holds a wake.
+    for _ in 0..100_000 {
+        waker.wake().unwrap();
+    }
+    assert_eq!(reader.read().unwrap(), Event::Wake);
+    assert!(!reader.poll(Duration::ZERO).unwrap());
+}
+
+#[test]
+fn the_kitty_protocol_decides_what_bit_8_is() {
+    let _serial = serial();
+    let (mut term, tty) = pty();
+    let mut reader = Reader::from_fd(tty).unwrap();
+    let up = |modifiers| {
+        Event::Key(KeyEvent::new(KeyCode::Up, modifiers).with_encoding(KeyEncoding::Legacy))
+    };
+    term.write_all(b"\x1B[1;9A").unwrap();
+    assert_eq!(reader.read().unwrap(), up(KeyModifiers::META));
+    reader.set_kitty_keyboard(true);
+    term.write_all(b"\x1B[1;9A").unwrap();
+    assert_eq!(reader.read().unwrap(), up(KeyModifiers::SUPER));
 }

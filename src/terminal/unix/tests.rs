@@ -145,3 +145,188 @@ fn with_no_terminal_at_all_the_size_is_an_error() {
     let (stdout, _write) = std::os::unix::net::UnixStream::pair().unwrap();
     assert!(window_size_with(no_tty, &stdout).is_err());
 }
+
+/// Set in the child [`the_controlling_terminal_entry_points`] runs itself
+/// as, to the path of the terminal to make its controlling one.
+const CHILD_TTY: &str = "TTYR_TEST_CONTROLLING_TTY";
+
+/// What the child says once it reads keys, so the test types one.
+const READY: &str = "ttyr-test-ready";
+
+/// The entry points that open `/dev/tty` (`size`, `window_size`,
+/// `enable_raw_mode`, `Reader::open`, the panic hook's fallback output and
+/// the backend's size), which need a controlling terminal: the test binary
+/// runs this test again as a child in a session of its own on a pty.
+#[test]
+fn the_controlling_terminal_entry_points() {
+    match std::env::var(CHILD_TTY) {
+        Ok(path) => controlling_terminal_child(&path),
+        Err(_) => controlling_terminal_parent(),
+    }
+}
+
+fn controlling_terminal_parent() {
+    use std::io::{BufRead, BufReader, Read, Write};
+    use std::process::{Command, Stdio};
+    use std::sync::mpsc;
+    use std::thread;
+    use std::time::{Duration, Instant};
+
+    // `_tty`, the program's side, is held to the end, so reading the
+    // terminal's side waits for the child rather than failing before it
+    // opens its own.
+    let (mut term, _tty) = pty();
+    let size = Winsize {
+        ws_row: 33,
+        ws_col: 111,
+        ws_xpixel: 999,
+        ws_ypixel: 666,
+    };
+    tcsetwinsize(&term, size).unwrap();
+    let path = rustix::pty::ptsname(&term, Vec::new()).unwrap();
+    let mut child = Command::new(std::env::current_exe().unwrap())
+        .args([
+            "terminal::unix::tests::the_controlling_terminal_entry_points",
+            "--exact",
+            "--nocapture",
+            "--test-threads=1",
+        ])
+        .env(CHILD_TTY, path.to_str().unwrap())
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let (lines, lines_rx) = mpsc::channel();
+    let stdout = child.stdout.take().unwrap();
+    thread::spawn(move || {
+        for line in BufReader::new(stdout).lines() {
+            let _ = lines.send(line.unwrap_or_default());
+        }
+    });
+    let mut stderr = child.stderr.take().unwrap();
+    let errors = thread::spawn(move || {
+        let mut text = String::new();
+        let _ = stderr.read_to_string(&mut text);
+        text
+    });
+    let mut output = term.try_clone().unwrap();
+    let (chunks, chunks_rx) = mpsc::channel();
+    thread::spawn(move || {
+        let mut buf = [0; 256];
+        while let Ok(n @ 1..) = output.read(&mut buf) {
+            let _ = chunks.send(buf[..n].to_vec());
+        }
+    });
+    let deadline = Instant::now() + Duration::from_secs(10);
+    let mut said = Vec::new();
+    let ready = loop {
+        match lines_rx.recv_timeout(deadline.saturating_duration_since(Instant::now())) {
+            // After libtest's "test … " on the same line.
+            Ok(line) if line.ends_with(READY) => break true,
+            Ok(line) => said.push(line),
+            Err(_) => break false,
+        }
+    };
+    // The panic hook's off sequences, which it writes through `/dev/tty`
+    // once raw mode is off; the child waits for a line after them.
+    let off = b"\x1B[?2004l\x1B[?25h";
+    let mut written = Vec::new();
+    if ready {
+        term.write_all(b"x").unwrap();
+        while !written.ends_with(off) {
+            let left = deadline.saturating_duration_since(Instant::now());
+            match chunks_rx.recv_timeout(left) {
+                Ok(chunk) => written.extend(chunk),
+                Err(_) => break,
+            }
+        }
+        term.write_all(b"\n").unwrap();
+    }
+    let status = loop {
+        if let Some(status) = child.try_wait().unwrap() {
+            break Some(status);
+        }
+        if Instant::now() > deadline {
+            child.kill().unwrap();
+            child.wait().unwrap();
+            break None;
+        }
+        thread::sleep(Duration::from_millis(10));
+    };
+    let errors = errors.join().unwrap();
+    assert!(ready, "the child never read keys:\n{said:?}\n{errors}");
+    assert!(status.is_some_and(|s| s.success()), "{status:?}:\n{errors}");
+    assert!(
+        written.ends_with(off),
+        "{:?}",
+        String::from_utf8_lossy(&written)
+    );
+}
+
+fn controlling_terminal_child(path: &str) {
+    use std::io::Write;
+
+    use rustix::fs::{Mode, OFlags};
+
+    use crate::event::{Event, KeyCode, KeyEncoding, KeyEvent, KeyModifiers};
+    use crate::reader::Reader;
+    use crate::terminal::{self, enable_raw_mode, restore_on_panic, size, window_size};
+
+    rustix::process::setsid().unwrap();
+    let tty = rustix::fs::open(path, OFlags::RDWR | OFlags::NOCTTY, Mode::empty()).unwrap();
+    rustix::process::ioctl_tiocsctty(&tty).unwrap();
+
+    assert_eq!(size().unwrap(), (111, 33));
+    let expected = WindowSize {
+        columns: 111,
+        rows: 33,
+        width: 999,
+        height: 666,
+    };
+    assert_eq!(window_size().unwrap(), expected);
+    #[cfg(feature = "ratatui")]
+    {
+        use ratatui_core::backend::Backend;
+        let mut backend = crate::backend::TtyrBackend::new(Vec::new());
+        let cells = ratatui_core::layout::Size {
+            width: 111,
+            height: 33,
+        };
+        assert_eq!(backend.size().unwrap(), cells);
+        let window = backend.window_size().unwrap();
+        assert_eq!(window.columns_rows, cells);
+        assert_eq!((window.pixels.width, window.pixels.height), (999, 666));
+    }
+
+    enable_raw_mode().unwrap();
+    assert!(
+        !tcgetattr(&tty)
+            .unwrap()
+            .local_modes
+            .contains(LocalModes::ICANON)
+    );
+    let mut reader = Reader::open().unwrap();
+    println!("{READY}");
+    std::io::stdout().flush().unwrap();
+    let x =
+        KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE).with_encoding(KeyEncoding::Legacy);
+    assert_eq!(reader.read().unwrap(), Event::Key(x));
+    drop(reader);
+    disable_raw_mode().unwrap();
+    assert!(
+        tcgetattr(&tty)
+            .unwrap()
+            .local_modes
+            .contains(LocalModes::ICANON)
+    );
+
+    // With raw mode off, the panic hook writes to `/dev/tty`.
+    restore_on_panic();
+    terminal::enable(&mut Vec::new(), terminal::Mode::BracketedPaste).unwrap();
+    let panicked = std::panic::catch_unwind(|| panic!("on purpose"));
+    assert!(panicked.is_err());
+    // Until the test has read them.
+    let mut line = [0; 1];
+    rustix::io::read(&tty, &mut line).unwrap();
+}
