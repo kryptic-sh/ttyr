@@ -2,10 +2,10 @@
 
 use rustix::termios::{LocalModes, Termios, Winsize, tcgetattr, tcsetwinsize};
 
-use super::WindowSize;
 use super::{
     disable_raw_mode, enable_raw_mode_with, is_raw_mode_enabled, window_size_of, window_size_with,
 };
+use crate::terminal::WindowSize;
 use crate::test_pty::{local_modes, pty, terminal_state as serial};
 
 /// The attributes raw mode changes, comparable.

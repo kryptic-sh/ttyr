@@ -83,10 +83,6 @@ first within each group.
   (Caps Lock alone gives `shifted` in `char_key` and not in `char_event`), and a
   fix to one does not reach the others. One function taking whether Shift was
   held and whether Caps Lock is known would hold the knowledge once.
-- **`WindowSize` is defined twice**, in `src/terminal/unix.rs` and
-  `src/terminal/windows.rs`, with the same fields and different docs; a field
-  added to one breaks the other platform in CI only. One definition in
-  `src/terminal.rs`, with the per-platform note on the pixel fields.
 - **The reader tests are duplicated between `src/reader/tests.rs` and
   `src/reader/windows/tests.rs`**: most tests share a name and a body and differ
   only in how the terminal is driven (a pty write, an injected record). A fix to

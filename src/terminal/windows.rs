@@ -20,18 +20,7 @@ use windows_sys::Win32::System::Console::{
 #[cfg(test)]
 mod tests;
 
-/// The terminal's size in cells and, where it reports them, in pixels.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct WindowSize {
-    /// Columns.
-    pub columns: u16,
-    /// Rows.
-    pub rows: u16,
-    /// The width in pixels: 0, as the console does not report it.
-    pub width: u16,
-    /// The height in pixels: 0, as the console does not report it.
-    pub height: u16,
-}
+use super::WindowSize;
 
 /// The console's input and its active screen buffer, which raw mode and the
 /// guard change the modes of.

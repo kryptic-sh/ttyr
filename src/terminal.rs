@@ -26,15 +26,28 @@ pub use guard::{
 pub use modes::*;
 pub use queries::*;
 pub use screen::*;
-pub use sys::{
-    WindowSize, disable_raw_mode, enable_raw_mode, is_raw_mode_enabled, size, window_size,
-};
+pub use sys::{disable_raw_mode, enable_raw_mode, is_raw_mode_enabled, size, window_size};
 #[cfg(unix)]
 pub(crate) use unix::open_tty;
 #[cfg(unix)]
 pub use unix::{enable_raw_mode_on, size_of, window_size_of};
 #[cfg(windows)]
 pub(crate) use windows::{Console, console_mode, window_size_of, window_top};
+
+/// The terminal's size in cells and, where it reports them, in pixels.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct WindowSize {
+    /// Columns.
+    pub columns: u16,
+    /// Rows.
+    pub rows: u16,
+    /// The width in pixels, or 0 where the terminal does not report it (on
+    /// Windows always: the console does not).
+    pub width: u16,
+    /// The height in pixels, or 0 where the terminal does not report it (on
+    /// Windows always: the console does not).
+    pub height: u16,
+}
 
 /// Locks `state` from a panic hook, which may run while this thread holds it
 /// (the panic came from inside): `None` then, rather than a deadlock. A

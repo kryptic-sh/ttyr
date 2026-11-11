@@ -8,21 +8,10 @@ use std::sync::{Mutex, MutexGuard, PoisonError};
 use rustix::fs::{Mode, OFlags};
 use rustix::termios::{OptionalActions, Termios, tcgetattr, tcgetwinsize, tcsetattr};
 
+use super::WindowSize;
+
 #[cfg(test)]
 mod tests;
-
-/// The terminal's size in cells and, where it reports them, in pixels.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct WindowSize {
-    /// Columns.
-    pub columns: u16,
-    /// Rows.
-    pub rows: u16,
-    /// The width in pixels, or 0 where the terminal does not report it.
-    pub width: u16,
-    /// The height in pixels, or 0 where the terminal does not report it.
-    pub height: u16,
-}
 
 /// The controlling terminal's size, columns then rows; with no controlling
 /// terminal, stdout's (see [`window_size`]).
