@@ -120,33 +120,6 @@ first within each group.
   record mapping (`src/event/console`) is tested on every platform, so the
   decoder and the guard's record have no platform gap.
 
-### Docs and API
-
-- **`Event::Wake` and `Event::Resize` are documented as Unix.** `Event::Wake`'s
-  doc (`src/event.rs`) says "`ttyr::reader`, on Unix"; the Windows reader pushes
-  it too (`Source::wait` in `src/reader/windows.rs`). `Event::Resize`'s doc says
-  the reader sends it on `SIGWINCH`; on Windows it is
-  `WINDOW_BUFFER_SIZE_EVENT`, and only once raw mode has turned
-  `ENABLE_WINDOW_INPUT` on, which `Reader::open`'s Windows doc says and the
-  event's does not. Verified by reading.
-- **`KeyEventState::CAPS_LOCK` and `NUM_LOCK` are documented as "kitty protocol
-  only".** `modified_char_key` (`src/event/decoder/csi.rs`) sets `CAPS_LOCK` for
-  xterm's modifyOtherKeys form, and `state` in `src/event/console.rs` sets both
-  from the console's `CAPSLOCK_ON` and `NUMLOCK_ON`;
-  `xterm_caps_lock_letter_is_not_shift` and
-  `shift_and_caps_lock_letters_read_as_the_decoder_reads_them` assert it.
-  `Report::TerminalColor`'s doc likewise says answers come "in `rgb:` form"
-  where `#` and `rgbi:` are read too. Verified by reading.
-- **crossterm pieces a port will look for and not find, with no note saying
-  why:** `terminal::SetSize` (`CSI 8 ; rows ; cols t`), `cursor::position()` and
-  `supports_keyboard_enhancement` (blocking, left out on purpose per 01's
-  principles, but README and the docs do not say so), the `Command` trait's
-  `execute_winapi` and `is_ansi_code_supported` (a port that implemented
-  `Command` for its own types compiles after deleting them), and
-  `event::poll`/`read` as free functions (here methods on `Reader`). A short
-  porting-notes section in README or `docs/plan/08-adoption.md` would pay for
-  itself in phase 08.
-
 ### Code quality
 
 - **Three copies of the "an upper-case letter arrived" rule.** `char_key`

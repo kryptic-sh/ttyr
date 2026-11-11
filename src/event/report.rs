@@ -37,7 +37,8 @@ pub enum Report {
     ColorScheme(ColorScheme),
     /// A colour the terminal reports in answer to a query: `OSC 10 ; ?` (its
     /// foreground), `OSC 11 ; ?` (background), `OSC 12 ; ?` (cursor) or
-    /// `OSC 4 ; n ; ?` (palette entry `n`), answered in `rgb:` form.
+    /// `OSC 4 ; n ; ?` (palette entry `n`), answered in any of Xlib's
+    /// numeric forms: `rgb:`, `#` or `rgbi:`.
     TerminalColor(TerminalColor),
     /// The cursor's position (CPR), `CSI row ; column R`, in answer to
     /// `CSI 6 n`; zero-based. xterm's Ctrl+F3 and the like (`CSI 1 ; mods R`)

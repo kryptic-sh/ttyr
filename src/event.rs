@@ -39,10 +39,12 @@ pub enum Event {
     /// replaced with U+FFFD.
     Paste(String),
     /// The terminal's new size, columns then rows. The reader sends it on
-    /// `SIGWINCH`; the decoder never does.
+    /// `SIGWINCH` on Unix, and on Windows for the console's resize records,
+    /// which come once raw mode has turned `ENABLE_WINDOW_INPUT` on; the
+    /// decoder never does.
     Resize(u16, u16),
-    /// The reader's `Waker` woke it (`ttyr::reader`, on Unix); the decoder
-    /// never sends it.
+    /// The reader's `Waker` woke it (`ttyr::reader`); the decoder never
+    /// sends it.
     Wake,
     /// A report: an answer to a query, or a change the terminal announces.
     Report(Report),

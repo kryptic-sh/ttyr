@@ -454,9 +454,12 @@ bitflags! {
     pub struct KeyEventState: u8 {
         /// The key is on the keypad.
         const KEYPAD = 0b0000_0001;
-        /// Caps Lock was on (kitty protocol only).
+        /// Caps Lock was on, where the encoding says so: kitty's lock
+        /// bits, an upper-case letter without Shift in xterm's forms, and
+        /// the Windows console's key state. A legacy terminal cannot tell.
         const CAPS_LOCK = 0b0000_0010;
-        /// Num Lock was on (kitty protocol only).
+        /// Num Lock was on, where the encoding says so: kitty's lock bits
+        /// and the Windows console's key state.
         const NUM_LOCK = 0b0000_0100;
         /// None of these.
         const NONE = 0b0000_0000;
