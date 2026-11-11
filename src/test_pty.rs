@@ -6,6 +6,7 @@ use std::os::fd::OwnedFd;
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
 use rustix::fs::{Mode, OFlags};
+use rustix::io::{FdFlags, fcntl_getfd, fcntl_setfd};
 use rustix::pty::{OpenptFlags, grantpt, openpt, ptsname, unlockpt};
 use rustix::termios::{LocalModes, OptionalActions, Termios, tcgetattr, tcsetattr};
 
@@ -13,6 +14,9 @@ use rustix::termios::{LocalModes, OptionalActions, Termios, tcgetattr, tcsetattr
 /// the program's.
 pub fn pty() -> (File, OwnedFd) {
     let master = openpt(OpenptFlags::RDWR | OpenptFlags::NOCTTY).unwrap();
+    // Not inherited by a child a test runs; set apart from the open, as
+    // `posix_openpt` takes no `O_CLOEXEC` on macOS.
+    fcntl_setfd(&master, fcntl_getfd(&master).unwrap() | FdFlags::CLOEXEC).unwrap();
     grantpt(&master).unwrap();
     unlockpt(&master).unwrap();
     let name = ptsname(&master, Vec::new()).unwrap();

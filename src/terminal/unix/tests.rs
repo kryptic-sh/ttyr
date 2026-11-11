@@ -330,3 +330,13 @@ fn controlling_terminal_child(path: &str) {
     let mut line = [0; 1];
     rustix::io::read(&tty, &mut line).unwrap();
 }
+
+#[test]
+fn the_test_ptys_are_not_inherited() {
+    // So that the child the controlling-terminal test runs holds only the
+    // side it opens itself.
+    use rustix::io::{FdFlags, fcntl_getfd};
+    let (term, tty) = pty();
+    assert!(fcntl_getfd(&term).unwrap().contains(FdFlags::CLOEXEC));
+    assert!(fcntl_getfd(&tty).unwrap().contains(FdFlags::CLOEXEC));
+}
