@@ -608,6 +608,28 @@ fn a_binding_and_the_event_it_means_are_one_chord() {
 }
 
 #[test]
+fn chords_some_encodings_cannot_carry() {
+    // The forms `KeyEvent::chord`'s doc lists, so that it stays true.
+    let chord = |bytes: &[u8]| {
+        let chord = key(bytes).chord();
+        (chord.key, chord.modifiers)
+    };
+    // Ctrl+Shift+1: the shifted key only where it is reported.
+    assert_eq!(chord(b"\x1B[49;6u"), (KeyCode::Char('1'), CTRL | SHIFT));
+    assert_eq!(
+        chord(b"\x1B[49;2;0;1;24;1_"),
+        (KeyCode::Char('1'), CTRL | SHIFT)
+    );
+    assert_eq!(chord(b"\x1B[49:33;6u"), (KeyCode::Char('!'), CTRL));
+    // Ctrl+Shift+a: a legacy control code has no Shift.
+    assert_eq!(chord(b"\x01"), (KeyCode::Char('a'), CTRL));
+    assert_eq!(chord(b"\x1B[97;6u"), (KeyCode::Char('A'), CTRL));
+    // Alt+a with Caps Lock: legacy `ESC A` reads as Shift.
+    assert_eq!(chord(b"\x1BA"), (KeyCode::Char('A'), ALT));
+    assert_eq!(chord(b"\x1B[97;67u"), (KeyCode::Char('a'), ALT));
+}
+
+#[test]
 fn a_press_repeat_and_release_are_one_chord() {
     let chords: Vec<_> = [&b"\x1B[97;3:1u"[..], b"\x1B[97;3:2u", b"\x1B[97;3:3u"]
         .iter()

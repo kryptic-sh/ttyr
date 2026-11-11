@@ -134,7 +134,8 @@ impl KeyEvent {
     }
 
     /// The key and modifiers that were meant, for keymaps and comparisons:
-    /// the same keypress gives the same chord from every encoding.
+    /// the same keypress gives the same chord from every encoding, where the
+    /// encoding carries enough to tell.
     ///
     /// The key is [`logical_char`](Self::logical_char) as a
     /// [`KeyCode::Char`] where there is one, else `key`; the modifiers are
@@ -149,6 +150,17 @@ impl KeyEvent {
     /// Ctrl+a stays Ctrl+a. Shift with a key whose shifted character the
     /// terminal did not report (`1` without kitty flag 4) stays a modifier:
     /// `1` with Shift, where a terminal that reports `!` gives `!`.
+    ///
+    /// What some encodings do not carry, so that a keymap binds both forms:
+    ///
+    /// - Ctrl+Shift with a digit or symbol: `1` with Ctrl and Shift from
+    ///   kitty's flag 1 and the Windows console, `!` with Ctrl from kitty's
+    ///   flag 4, which reports the shifted key.
+    /// - Ctrl+Shift with a letter from a legacy terminal, whose control code
+    ///   (`0x01`) has no Shift: `a` with Ctrl, where the others give `A`.
+    /// - Alt with Caps Lock from a legacy terminal, whose `ESC A` cannot say
+    ///   Caps Lock from Shift: `A` with Alt, where the others give `a`, as
+    ///   Caps Lock does not count with Alt held.
     pub fn chord(&self) -> KeyChord {
         match self.logical() {
             Some((c, modifiers)) => KeyChord {
