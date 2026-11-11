@@ -29,18 +29,20 @@ first within each group.
   mid-paste, a terminal or ConPTY dropped the marker) never types that much, so
   in practice their keys still vanish until the `Reader` is dropped. Recovering
   sooner is a decision: new API (`Decoder::reset` and `Reader::reset`, which a
-  caller uses after its own timeout; additive, so a minor bump rather than the
-  patch this fix went into), or a policy in `Reader::wait` that gives a paste up
-  when nothing has arrived for some time (no new API, but a paste a slow ConPTY
-  delivers in pieces would then be cut in two). crossterm's parser waits the
-  same way, as recalled, not checked.
+  caller uses after its own timeout; additive, and the next release is 0.2.0
+  anyway), or a policy in `Reader::wait` that gives a paste up when nothing has
+  arrived for some time (no new API, but a paste a slow ConPTY delivers in
+  pieces would then be cut in two). crossterm's parser waits the same way, as
+  recalled, not checked.
 - **A DA2 or DA1 answer with a value above 65535 decodes as `Event::Unknown`.**
   `flat` (`src/event/decoder/csi.rs`) narrows each parameter to `u16`; a
   terminal whose DA2 version field is larger loses the whole report (foot, for
   one, packs major, minor and patch into one number; whether any shipped
   terminal's value exceeds `u16` was not checked). Verified by running with a
   5-digit version. Fix: `Vec<u32>` in `Report::SecondaryDeviceAttributes` and
-  `PrimaryDeviceAttributes`, a breaking change cheap before adoption.
+  `PrimaryDeviceAttributes`, a public type change, not made in the 0.1.0
+  review's fixes for want of the owner's approval; the next release is 0.2.0, so
+  it costs no extra break if made before it.
 - **A truncated UTF-8 lead byte is held across a flush, delaying the next key.**
   `parse_utf8` (`src/event/decoder.rs`) ignores `at_end`, so a lone 0xC3 (noise
   on a serial line, a terminal that dropped a byte) stays pending through
@@ -212,6 +214,11 @@ first within each group.
 
 So the next surprise is cheap; each is a decoder choice, not a bug.
 
+- **`CSI 28 ~` to `CSI 34 ~` are F15 to F20, as xterm's ctlseqs number them**
+  (25 F13, 26 F14, 28 F15, 29 F16, 31 F17 to 34 F20). crossterm 0.29's
+  `parse_csi_special_key_code` reads 28 and 29 as F13 and F14 and 31 to 34 as
+  F14 to F17, so a port that bound those keys under crossterm sees different
+  numbers here.
 - **`CSI 1 ; mods R` is a cursor position report**, not xterm's modified F3
   (crossterm reads it the same way). kitty sends F3 as `CSI 13 ~` to avoid this.
 - **Modifier bit 8 is Super only while the kitty protocol is on**
