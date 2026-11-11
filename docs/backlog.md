@@ -149,15 +149,6 @@ first within each group.
 
 ### Docs and API
 
-- **`restore_on_panic` restores on every panic, including ones the program
-  catches.** The hook (`src/terminal/guard.rs`) runs for a worker thread's panic
-  and inside `catch_unwind`, takes the `ON` record and `RAW` away, and the
-  program that goes on finds a cooked terminal, no modes and
-  `is_raw_mode_enabled()` false, with no event to say so. ratatui's and
-  crossterm's hooks behave the same, but the doc does not say it. Verified:
-  `a_panic_restores_the_terminal` relies on exactly this with `catch_unwind`.
-  Fix: document it, and say that a program that catches panics re-enables raw
-  mode and its modes itself.
 - **`Event::Wake` and `Event::Resize` are documented as Unix.** `Event::Wake`'s
   doc (`src/event.rs`) says "`ttyr::reader`, on Unix"; the Windows reader pushes
   it too (`Source::wait` in `src/reader/windows.rs`). `Event::Resize`'s doc says

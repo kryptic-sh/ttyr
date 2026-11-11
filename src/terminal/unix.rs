@@ -157,10 +157,10 @@ fn make_raw(tty: OwnedFd) -> io::Result<(OwnedFd, Termios)> {
 pub type RawTty = OwnedFd;
 
 /// Where a panic hook writes the modes' off sequences: the terminal raw mode
-/// was on, or else `/dev/tty`.
-pub fn panic_output(raw: Option<OwnedFd>) -> io::Result<File> {
+/// was on, duplicated so that it is kept to resume on, or else `/dev/tty`.
+pub fn panic_output(raw: Option<&OwnedFd>) -> io::Result<File> {
     Ok(File::from(match raw {
-        Some(tty) => tty,
+        Some(tty) => tty.try_clone()?,
         None => open_tty()?,
     }))
 }

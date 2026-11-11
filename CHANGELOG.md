@@ -8,6 +8,12 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- `terminal::resume_after_panic(out)`: takes the terminal back after a panic the
+  program caught. The `restore_on_panic` hook now keeps what it turned off (the
+  modes and the terminal raw mode was on), and this puts raw mode and every mode
+  back in their order, returning whether there was anything to resume. `restore`
+  drops what was kept. `restore_on_panic`'s docs now say that it restores on
+  every panic, caught and worker-thread ones included.
 - `KeyChord` and `KeyEvent::chord()`: the key and modifiers that were meant, the
   same for the same keypress from every encoding (legacy, xterm, kitty with any
   flags, the Windows console), for keymaps and comparisons. A character key is

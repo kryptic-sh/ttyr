@@ -311,10 +311,10 @@ pub fn is_raw_mode_enabled() -> bool {
 }
 
 /// Where a panic hook writes the modes' off sequences: the console's
-/// output.
-pub fn panic_output(raw: Option<Console>) -> io::Result<File> {
+/// output, duplicated from raw mode's so that it is kept to resume on.
+pub fn panic_output(raw: Option<&Console>) -> io::Result<File> {
     let output = match raw {
-        Some(console) => console.output,
+        Some(console) => console.output.try_clone()?,
         None => open_console("CONOUT$")?,
     };
     Ok(File::from(output))

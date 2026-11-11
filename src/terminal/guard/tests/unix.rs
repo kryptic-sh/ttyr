@@ -9,7 +9,7 @@ use std::time::Duration;
 
 use rustix::termios::{LocalModes, OptionalActions, tcgetattr, tcsetattr};
 
-use super::super::{Mode, enable, restore, restore_on_panic, suspend_with};
+use super::super::{Mode, enable, restore, restore_on_panic, resume_after_panic, suspend_with};
 use super::text;
 use crate::event::KeyboardEnhancementFlags as Flags;
 use crate::terminal::unix::{enable_raw_mode_with, is_raw_mode_enabled};
@@ -105,4 +105,88 @@ fn a_panic_restores_the_terminal() {
     let mut out = Vec::new();
     restore(&mut out).unwrap();
     assert!(out.is_empty());
+}
+
+/// A panic the test catches, with the guard's hook installed.
+fn caught_panic() {
+    restore_on_panic();
+    let panicked = std::panic::catch_unwind(|| panic!("on purpose"));
+    assert!(panicked.is_err());
+}
+
+#[test]
+fn resume_after_panic_takes_the_terminal_back() {
+    let _state = terminal_state();
+    let (term, tty) = pty();
+    let cooked = tcgetattr(&tty).unwrap();
+    raw(&tty);
+    let mut out = Vec::new();
+    enable(&mut out, Mode::BracketedPaste).unwrap();
+    enable(&mut out, Mode::FocusChange).unwrap();
+    caught_panic();
+    let expected = "\x1B[?1004l\x1B[?2004l\x1B[?25h";
+    assert_eq!(read_back(&term, expected.len()), expected);
+    assert_eq!(local_modes(&tcgetattr(&tty).unwrap()), local_modes(&cooked));
+    assert!(!is_raw_mode_enabled());
+    // Back in one call: raw mode on the same terminal, then the modes in
+    // the order they were turned on.
+    let mut out = Vec::new();
+    assert!(resume_after_panic(&mut out).unwrap());
+    assert_eq!(text(&out), "\x1B[?2004h\x1B[?1004h");
+    assert!(is_raw_mode_enabled());
+    assert!(
+        !tcgetattr(&tty)
+            .unwrap()
+            .local_modes
+            .contains(LocalModes::ICANON)
+    );
+    // Once.
+    let mut out = Vec::new();
+    assert!(!resume_after_panic(&mut out).unwrap());
+    assert!(out.is_empty());
+    restore(&mut out).unwrap();
+    assert_eq!(text(&out), "\x1B[?1004l\x1B[?2004l\x1B[?25h");
+}
+
+#[test]
+fn a_restore_after_a_panic_leaves_nothing_to_resume() {
+    let _state = terminal_state();
+    let (_term, tty) = pty();
+    raw(&tty);
+    enable(&mut Vec::new(), Mode::BracketedPaste).unwrap();
+    caught_panic();
+    restore(&mut Vec::new()).unwrap();
+    let mut out = Vec::new();
+    assert!(!resume_after_panic(&mut out).unwrap());
+    assert!(out.is_empty());
+    assert!(!is_raw_mode_enabled());
+}
+
+#[test]
+fn with_nothing_on_at_the_panic_there_is_nothing_to_resume() {
+    let _state = terminal_state();
+    caught_panic();
+    let mut out = Vec::new();
+    assert!(!resume_after_panic(&mut out).unwrap());
+    assert!(out.is_empty());
+    assert!(!is_raw_mode_enabled());
+}
+
+#[test]
+fn a_mode_turned_on_between_panic_and_resume_is_not_written_twice() {
+    let _state = terminal_state();
+    let (_term, tty) = pty();
+    raw(&tty);
+    enable(&mut Vec::new(), Mode::BracketedPaste).unwrap();
+    enable(&mut Vec::new(), Mode::FocusChange).unwrap();
+    caught_panic();
+    let mut out = Vec::new();
+    enable(&mut out, Mode::FocusChange).unwrap();
+    out.clear();
+    assert!(resume_after_panic(&mut out).unwrap());
+    assert_eq!(text(&out), "\x1B[?2004h");
+    out.clear();
+    // Recorded in the order they came back.
+    restore(&mut out).unwrap();
+    assert_eq!(text(&out), "\x1B[?2004l\x1B[?1004l\x1B[?25h");
 }

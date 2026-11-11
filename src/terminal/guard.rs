@@ -37,6 +37,16 @@ fn on() -> MutexGuard<'static, Vec<Mode>> {
     ON.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
+/// What the panic hook last took away (the modes on, in order, and the
+/// terminal raw mode was on), for [`resume_after_panic`] to put back.
+static TAKEN: Mutex<Option<Taken>> = Mutex::new(None);
+
+type Taken = (Vec<Mode>, Option<RawTty>);
+
+fn taken() -> MutexGuard<'static, Option<Taken>> {
+    TAKEN.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
 /// A mode the guard turns on and off. One of each kind is on at a time:
 /// enabling a kind that is on with another value replaces it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -187,7 +197,11 @@ pub fn disable(out: &mut impl Write, mode: Mode) -> io::Result<()> {
 /// `out`, then turns raw mode off. With nothing on and raw mode off, it does
 /// nothing. The record is cleared even if writing fails, as a terminal that
 /// cannot be written is gone.
+///
+/// What a panic's restore kept for [`resume_after_panic`] is dropped too:
+/// a program that restores means to leave the terminal as it is.
 pub fn restore(out: &mut impl Write) -> io::Result<()> {
+    taken().take();
     release(out).map(drop)
 }
 
@@ -222,14 +236,42 @@ fn release(out: &mut impl Write) -> io::Result<(Vec<Mode>, Option<RawTty>)> {
 pub fn suspend_with<T>(out: &mut impl Write, f: impl FnOnce() -> T) -> io::Result<T> {
     let (modes, tty) = release(out)?;
     let result = f();
+    take_back(out, modes, tty)?;
+    Ok(result)
+}
+
+/// Turns raw mode back on, on `tty` with its attributes taken afresh, then
+/// `modes` in their order, and flushes `out`: the terminal taken back after
+/// [`suspend_with`]'s `f` or a caught panic.
+fn take_back(out: &mut impl Write, modes: Vec<Mode>, tty: Option<RawTty>) -> io::Result<()> {
     if let Some(tty) = tty {
         enable_raw_mode_with(|| Ok(tty))?;
     }
     for mode in modes {
         enable(out, mode)?;
     }
-    out.flush()?;
-    Ok(result)
+    out.flush()
+}
+
+/// Takes the terminal back after a panic the program caught: turns raw mode
+/// back on, on the terminal it was on, and every mode the panic hook of
+/// [`restore_on_panic`] turned off, in the order they were turned on, then
+/// flushes `out`. `true` if there was something to take back; `false`, with
+/// nothing written, when no panic has restored since the last resume or
+/// [`restore`], or nothing was on when it did.
+///
+/// It goes through [`enable`], on top of whatever was turned on between
+/// the panic and the resume, which it neither clears nor is cleared by: a
+/// mode turned on again in between with the same value is not written
+/// twice, one with another value takes the value from before the panic, and
+/// raw mode turned on in between stays as it is. A second panic replaces
+/// what the first left to resume with what it took itself.
+pub fn resume_after_panic(out: &mut impl Write) -> io::Result<bool> {
+    let Some((modes, tty)) = taken().take() else {
+        return Ok(false);
+    };
+    take_back(out, modes, tty)?;
+    Ok(true)
 }
 
 /// Stops the process as Ctrl+Z does outside raw mode (`SIGTSTP`), the
@@ -247,6 +289,13 @@ pub fn suspend(out: &mut impl Write) -> io::Result<()> {
 /// was there before. Installed once however often it is called; a hook set
 /// after it that calls the one before runs it too.
 ///
+/// It restores on every panic: one the program will catch with
+/// `catch_unwind`, and one on a worker thread, as well as one that ends the
+/// program. A hook cannot know which it is, and a terminal left raw after a
+/// panic that ends the program is the worse failure; ratatui's and
+/// crossterm's hooks do the same. A program that catches panics and goes on
+/// takes the terminal back with [`resume_after_panic`].
+///
 /// It writes to the terminal raw mode is on, or else to `/dev/tty`, not to
 /// stdout, whose lock the panicking thread may hold.
 pub fn restore_on_panic() {
@@ -260,23 +309,26 @@ pub fn restore_on_panic() {
     });
 }
 
-/// [`restore`] from a panic hook. The panic may have come from inside the
-/// guard, with its state held: that state is skipped rather than waited for.
-/// A failure has nowhere to be reported.
+/// [`restore`] from a panic hook, keeping what it took for
+/// [`resume_after_panic`]. The panic may have come from inside the guard,
+/// with its state held: that state is skipped rather than waited for. A
+/// failure has nowhere to be reported.
 fn restore_after_panic() {
-    let modes = super::lock_after_panic(&ON).map(|mut on| mem::take(&mut *on));
+    let modes = super::lock_after_panic(&ON)
+        .map(|mut on| mem::take(&mut *on))
+        .unwrap_or_default();
     // As in `release`: the modes' console bits, then raw mode's.
     #[cfg(windows)]
     super::windows::put_back_modes_after_panic();
     let tty = take_raw_after_panic();
-    let modes = modes.unwrap_or_default();
-    if modes.is_empty() && tty.is_none() {
-        return;
-    }
-    let Ok(mut out) = panic_output(tty) else {
-        return;
-    };
-    if let Ok(bytes) = offs(&modes) {
+    let took = !modes.is_empty() || tty.is_some();
+    if took
+        && let Ok(mut out) = panic_output(tty.as_ref())
+        && let Ok(bytes) = offs(&modes)
+    {
         let _ = out.write_all(bytes.as_bytes());
+    }
+    if let Some(mut taken) = super::lock_after_panic(&TAKEN) {
+        *taken = took.then_some((modes, tty));
     }
 }

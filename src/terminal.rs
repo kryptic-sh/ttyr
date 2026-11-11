@@ -20,7 +20,9 @@ use windows as sys;
 
 #[cfg(unix)]
 pub use guard::suspend;
-pub use guard::{Mode, disable, enable, restore, restore_on_panic, suspend_with};
+pub use guard::{
+    Mode, disable, enable, restore, restore_on_panic, resume_after_panic, suspend_with,
+};
 pub use modes::*;
 pub use queries::*;
 pub use screen::*;

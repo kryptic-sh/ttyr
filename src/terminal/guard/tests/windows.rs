@@ -7,7 +7,7 @@ use windows_sys::Win32::System::Console::{
     ENABLE_QUICK_EDIT_MODE, ENABLE_VIRTUAL_TERMINAL_INPUT, ENABLE_WRAP_AT_EOL_OUTPUT,
 };
 
-use super::super::{Mode, enable, restore, restore_on_panic, suspend_with};
+use super::super::{Mode, enable, restore, restore_on_panic, resume_after_panic, suspend_with};
 use super::{NORMAL, text};
 use crate::event::KeyboardEnhancementFlags as Flags;
 use crate::terminal::windows::{
@@ -109,4 +109,63 @@ fn a_panic_restores_the_console() {
     let mut out = Vec::new();
     restore(&mut out).unwrap();
     assert!(out.is_empty());
+}
+
+/// A panic the test catches, with the guard's hook installed.
+fn caught_panic() {
+    restore_on_panic();
+    let panicked = std::panic::catch_unwind(|| panic!("on purpose"));
+    assert!(panicked.is_err());
+}
+
+#[test]
+fn resume_after_panic_takes_the_console_back() {
+    let _console = console();
+    let before = modes();
+    enable_raw_mode().unwrap();
+    let mut out = Vec::new();
+    enable(&mut out, Mode::BracketedPaste).unwrap();
+    enable(&mut out, NORMAL).unwrap();
+    caught_panic();
+    assert!(!is_raw_mode_enabled());
+    assert_eq!(modes().0 & MODE_BITS, before.0 & MODE_BITS);
+    // Back in one call: raw mode, then the modes in the order they were
+    // turned on, the mouse's console bits with it.
+    let mut out = Vec::new();
+    assert!(resume_after_panic(&mut out).unwrap());
+    assert_eq!(text(&out), "\x1B[?2004h\x1B[?1000h\x1B[?1006h");
+    assert!(is_raw_mode_enabled());
+    let (input, _) = modes();
+    assert_eq!(input & ENABLE_LINE_INPUT, 0);
+    assert_ne!(input & ENABLE_MOUSE_INPUT, 0);
+    // Once.
+    let mut out = Vec::new();
+    assert!(!resume_after_panic(&mut out).unwrap());
+    assert!(out.is_empty());
+    restore(&mut out).unwrap();
+    let raw_bits = MODE_BITS | ENABLE_LINE_INPUT | ENABLE_ECHO_INPUT | ENABLE_PROCESSED_INPUT;
+    assert_eq!(modes().0 & raw_bits, before.0 & raw_bits);
+}
+
+#[test]
+fn a_restore_after_a_panic_leaves_nothing_to_resume() {
+    let _console = console();
+    enable_raw_mode().unwrap();
+    enable(&mut Vec::new(), Mode::BracketedPaste).unwrap();
+    caught_panic();
+    restore(&mut Vec::new()).unwrap();
+    let mut out = Vec::new();
+    assert!(!resume_after_panic(&mut out).unwrap());
+    assert!(out.is_empty());
+    assert!(!is_raw_mode_enabled());
+}
+
+#[test]
+fn with_nothing_on_at_the_panic_there_is_nothing_to_resume() {
+    let _console = console();
+    caught_panic();
+    let mut out = Vec::new();
+    assert!(!resume_after_panic(&mut out).unwrap());
+    assert!(out.is_empty());
+    assert!(!is_raw_mode_enabled());
 }
