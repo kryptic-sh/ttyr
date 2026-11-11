@@ -33,6 +33,8 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- Windows: a title-case letter from the console (`ǅ`) is the key as typed, as
+  the decoder reads it from a terminal, instead of its lower case.
 - `KeyCode::KeypadBegin` always carries `KeyEventState::KEYPAD`. kitty's own
   encoding of the key (`CSI E`, `CSI 1 ; mods E`) and SS3 `ESC O E` came without
   it, where `CSI 57427 u` and the Windows console's had it.

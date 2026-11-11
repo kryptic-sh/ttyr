@@ -8,6 +8,7 @@
 //! release and repeat, Ctrl with Enter and Backspace, the keypad, and the
 //! back and forward mouse buttons.
 
+use super::key::single_lower;
 use super::{KeyCode, KeyEncoding, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
 use crate::event::MediaKeyCode;
 
@@ -294,9 +295,8 @@ const fn us_oem_char(vk: u16) -> Option<char> {
 /// letter typed in `shifted`; one typed by Caps Lock alone is its lower case
 /// with the lock in the state.
 fn char_event(c: char, modifiers: KeyModifiers) -> KeyEvent {
-    let mut lower = c.to_lowercase();
-    match (lower.next(), lower.next()) {
-        (Some(l), None) if l != c => {
+    match single_lower(c) {
+        Some(l) => {
             let event = KeyEvent::new(KeyCode::Char(l), modifiers);
             if modifiers.contains(KeyModifiers::SHIFT) {
                 event.with_shifted(Some(c))
@@ -304,7 +304,7 @@ fn char_event(c: char, modifiers: KeyModifiers) -> KeyEvent {
                 event
             }
         }
-        _ => KeyEvent::new(KeyCode::Char(c), modifiers),
+        None => KeyEvent::new(KeyCode::Char(c), modifiers),
     }
 }
 

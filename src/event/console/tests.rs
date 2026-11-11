@@ -62,6 +62,10 @@ fn shift_and_caps_lock_letters_read_as_the_decoder_reads_them() {
     assert_eq!(caps_a.logical_char(), Some('A'));
     let bang = press(0x31, unit('!'), SHIFT).unwrap();
     assert_eq!(bang, key(KeyCode::Char('!'), KeyModifiers::SHIFT));
+    // A title-case letter is not upper case: it is read as typed, as the
+    // decoder reads it from a terminal.
+    let title = press(0, unit('ǅ'), SHIFT).unwrap();
+    assert_eq!(title, key(KeyCode::Char('ǅ'), KeyModifiers::SHIFT));
 }
 
 #[test]
