@@ -105,6 +105,18 @@ fn an_escape_timeout_reads_a_lone_escape_once_it_passes() {
 }
 
 #[test]
+fn an_escape_timeout_too_long_to_reach_never_flushes() {
+    let _serial = serial();
+    let (mut term, tty) = pty();
+    let mut reader = Reader::from_fd(tty).unwrap();
+    reader.set_escape_timeout(Some(Duration::MAX));
+    term.write_all(b"\x1B").unwrap();
+    assert!(!reader.poll(Duration::from_millis(100)).unwrap());
+    term.write_all(b"[A").unwrap();
+    assert_eq!(reader.read().unwrap(), key(KeyCode::Up));
+}
+
+#[test]
 fn a_paste_waits_past_a_flush_for_its_end() {
     let _serial = serial();
     let (mut term, tty) = pty();

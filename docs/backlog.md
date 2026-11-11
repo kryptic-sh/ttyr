@@ -21,15 +21,6 @@ first within each group.
 
 ### Bugs
 
-- **`Reader::poll` and `read` panic with a large escape timeout.**
-  `Reader::wait` (`src/reader.rs`) computes the flush time as
-  `queue.last_input + t` with plain `Instant + Duration`, which panics on
-  overflow, while `poll` guards its own deadline with `checked_add`. A caller
-  that means "never read a lone ESC early" and passes
-  `set_escape_timeout(Some(Duration::MAX))` panics on the first `poll` with
-  bytes held ("overflow when adding duration to instant"). Verified by running
-  it over a pty. Fix: `checked_add`, with `None` meaning no flush, as `poll`
-  treats its deadline.
 - **A bracketed paste that never ends swallows every later key, and nothing can
   reset the decoder.** `Decoder::paste` (`src/event/decoder.rs`) holds
   everything after `CSI 200 ~` until `CSI 201 ~` arrives, with no length cap

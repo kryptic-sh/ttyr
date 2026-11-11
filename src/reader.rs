@@ -207,9 +207,14 @@ impl Reader {
             }
             let now = Instant::now();
             // When to read what the decoder holds as typed: at once with no
-            // escape timeout, or once the timeout passes with nothing more.
-            let flush_at = (queue.decoder.has_pending() && !queue.flushed)
-                .then(|| self.escape_timeout.map_or(now, |t| queue.last_input + t));
+            // escape timeout, or once the timeout passes with nothing more;
+            // never, for a timeout too long to reach.
+            let flush_at = if queue.decoder.has_pending() && !queue.flushed {
+                self.escape_timeout
+                    .map_or(Some(now), |t| queue.last_input.checked_add(t))
+            } else {
+                None
+            };
             let until = match (deadline, flush_at) {
                 (Some(a), Some(b)) => Some(a.min(b)),
                 (a, b) => a.or(b),

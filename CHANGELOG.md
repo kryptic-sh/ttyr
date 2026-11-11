@@ -6,6 +6,13 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- `Reader::poll`, `read` and `collect_answers` no longer panic when bytes are
+  held under an escape timeout too long to add to the time
+  (`set_escape_timeout(Some(Duration::MAX))`): such a timeout never reads a lone
+  `ESC` as typed.
+
 ## [0.1.0] - 2026-11-11
 
 ### Added

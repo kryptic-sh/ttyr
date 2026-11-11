@@ -276,6 +276,18 @@ fn an_escape_timeout_reads_a_lone_escape_once_it_passes() {
 }
 
 #[test]
+fn an_escape_timeout_too_long_to_reach_never_flushes() {
+    let _console = console();
+    let _vt = VtInput::on();
+    let mut reader = Reader::open().unwrap();
+    reader.set_escape_timeout(Some(Duration::MAX));
+    type_vt("\x1B");
+    assert!(!reader.poll(Duration::from_millis(100)).unwrap());
+    type_vt("[A");
+    assert_eq!(reader.read().unwrap(), legacy(KeyCode::Up));
+}
+
+#[test]
 fn a_paste_waits_past_a_flush_for_its_end() {
     let _console = console();
     let _vt = VtInput::on();
