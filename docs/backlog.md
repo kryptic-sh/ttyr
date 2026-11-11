@@ -4,11 +4,270 @@ What is not done yet, and why.
 
 - **Phase 08 is not done, and 07 is not finished**: moving the consumers off
   crossterm, and Windows on a real machine, planned in `docs/plan/`.
-- **The crate name is not reserved on crates.io.** `ttyr` was free on
-  2026-11-09; it is taken when the first version is published by the tag
-  pipeline in `.github/workflows/ci.yml`.
 - **Consumers not surveyed**: gpur, pikr, sqeel, hodl and the other ratatui
   apps' use of crossterm (01's Consumers lists tmxr's and hjkl's).
+
+## Review findings (0.1.0)
+
+A review of the whole crate as released (2026-11-11), on Linux: every source and
+test file read, `cargo test --all-features` run (115 tests and 1 doctest
+passed), `cargo llvm-cov --all-features` run (92.68% of lines, 90.63% of
+regions; the lowest files `terminal/unix.rs` at 75.34% of lines, `backend.rs`
+85.14%, `terminal/guard.rs` 86.92%, `event/console.rs` 87.97%, `reader/unix.rs`
+89.01%), and suspected bugs tried in a scratch program against the crate.
+Windows code was read, not run. Each entry says whether it was verified by
+running something or inferred from reading. Entries are ordered most severe
+first within each group.
+
+### Bugs
+
+- **`Reader::poll` and `read` panic with a large escape timeout.**
+  `Reader::wait` (`src/reader.rs`) computes the flush time as
+  `queue.last_input + t` with plain `Instant + Duration`, which panics on
+  overflow, while `poll` guards its own deadline with `checked_add`. A caller
+  that means "never read a lone ESC early" and passes
+  `set_escape_timeout(Some(Duration::MAX))` panics on the first `poll` with
+  bytes held ("overflow when adding duration to instant"). Verified by running
+  it over a pty. Fix: `checked_add`, with `None` meaning no flush, as `poll`
+  treats its deadline.
+- **A bracketed paste that never ends swallows every later key, and nothing can
+  reset the decoder.** `Decoder::paste` (`src/event/decoder.rs`) holds
+  everything after `CSI 200 ~` until `CSI 201 ~` arrives, with no length cap
+  (the CSI and string parsers have `MAX_CSI` and `MAX_STRING`). If the end never
+  comes (the program wrote `DisableBracketedPaste` while a paste was in flight,
+  a terminal or a ConPTY that dropped the end marker, a corrupted byte), every
+  key typed afterwards goes into the paste for ever. `Reader` wraps a private
+  `Decoder` with no `reset`, so only dropping the `Reader` recovers, and
+  `has_pending` stays true. Verified by running (keys after an unterminated
+  start are held across flushes). crossterm's parser waits the same way, as
+  recalled, not checked. Fix: a paste cap that gives the paste up as
+  `Event::Unknown`, or a `Decoder::reset` and `Reader::reset` the caller can use
+  after a timeout.
+- **Windows: a failing `SetConsoleMode` in `release` skips the off sequences and
+  leaves raw mode on.** In `release` (`src/terminal/guard.rs`) the
+  `#[cfg(windows)]` loop `mode.set_console(false)?` runs after `mem::take` has
+  emptied `ON` and before the off sequences are written and `take_raw` runs, so
+  on an error (the console gone, `CONIN$` not openable) the record is already
+  empty, nothing is written, and raw mode stays on, which the doc on `restore`
+  ("the record is cleared even if writing fails", raw mode off) contradicts.
+  `enable` has the inverse: `out.write_all` then `mode.set_console(true)?`, so
+  on an error the sequence is on the terminal but not recorded and `restore`
+  never turns it off. Inferred from reading. Fix: keep going on a console error
+  and report it at the end, as the Unix path does with `wrote`.
+- **Windows: a console mode turned on before raw mode is left on by `restore`.**
+  `Saved::apply` (`src/terminal/windows.rs`) saves the bits a mode changes when
+  it goes on and puts them back when it goes off; `release` does that first and
+  then `take_raw` writes back the whole input mode from the
+  `enable_raw_mode_with` snapshot. If `enable(Mode::Mouse { .. })` or
+  `enable(Mode::VirtualTerminalInput)` ran before `enable_raw_mode`, the
+  snapshot has `ENABLE_MOUSE_INPUT` on, `ENABLE_QUICK_EDIT_MODE` off and
+  `ENABLE_VIRTUAL_TERMINAL_INPUT` on, so after `restore`, after the panic hook,
+  and in the console `suspend_with` gives back, they stay that way; on the way
+  back from `suspend_with` the mode's saved bits are then the leaked ones, so it
+  compounds. Inferred from reading; the Windows tests
+  (`src/terminal/guard/tests/windows.rs`) turn raw mode on first, or turn the
+  modes on without raw mode. The crossterm order (raw mode first) is safe. Fix:
+  mask the `Saved` statics' bits out of raw mode's snapshot, or restore raw mode
+  before the modes; and a test that enables the mouse before raw mode and checks
+  the bits after `restore`.
+- **Windows: a Ctrl chord whose key has no control code is dropped.**
+  `control_key` (`src/event/console.rs`) returns `None` when the record's `unit`
+  is 0 and the virtual-key is not a letter or digit: Ctrl+; , Ctrl+, and Ctrl+.
+  (the OEM keys) give no character from the console, so the key never reaches
+  the program, where crossterm reads the layout with `ToUnicodeEx`. Inferred
+  from reading; the `0 => return None` arm is uncovered in the coverage run. The
+  phase 07 note about `ToUnicodeEx` covers misread keys, not dropped ones. Fix:
+  a US-layout fallback table for the OEM virtual-keys, or `ToUnicodeEx` on
+  Windows.
+- **A kitty `CSI u` key with an empty trailing text parameter decodes as
+  `Event::Unknown`.** `kitty_key` (`src/event/decoder/csi.rs`) collects the text
+  parameter with `collect::<Option<String>>()`, so one empty value fails the
+  whole key: `CSI 97 ; 1 ; u` and `CSI 97 ; ; u` are Unknown. Verified by
+  running. The kitty spec omits the text when empty and no terminal is known to
+  send the empty field, so this is robustness, not a seen failure. Fix: skip
+  empty values in the text parameter.
+- **A DA2 or DA1 answer with a value above 65535 decodes as `Event::Unknown`.**
+  `flat` (`src/event/decoder/csi.rs`) narrows each parameter to `u16`; a
+  terminal whose DA2 version field is larger loses the whole report (foot, for
+  one, packs major, minor and patch into one number; whether any shipped
+  terminal's value exceeds `u16` was not checked). Verified by running with a
+  5-digit version. Fix: `Vec<u32>` in `Report::SecondaryDeviceAttributes` and
+  `PrimaryDeviceAttributes`, a breaking change cheap before adoption.
+- **A truncated UTF-8 lead byte is held across a flush, delaying the next key.**
+  `parse_utf8` (`src/event/decoder.rs`) ignores `at_end`, so a lone 0xC3 (noise
+  on a serial line, a terminal that dropped a byte) stays pending through
+  `flush_event`; the next key arrives as `Event::Unknown([0xC3])` followed by
+  the key, after a delay of one keystroke. `incomplete_utf8_waits` asserts the
+  hold, so it is a decision; verified by running. The alternative is to give a
+  lead byte up at a flush, which misreads a character split across the
+  terminal's writes when the reader has no escape timeout. Record which is
+  wanted.
+- **A non-blocking fd given to `Reader::from_fd` makes `poll` fail.**
+  `Source::read_tty` (`src/reader/unix.rs`) treats every error but `EINTR` as
+  fatal, so an fd another library has set `O_NONBLOCK` on (stdin under some
+  async runtimes) returns `WouldBlock` as an error from `poll` the first time
+  `select` reports readiness a hair before the data. Inferred from reading. Fix:
+  treat `EAGAIN` as nothing read, or document the fd must be blocking.
+
+### Test coverage
+
+- **Everything that opens the controlling terminal has no test on any
+  platform.** `terminal::size`, `window_size`, `enable_raw_mode`,
+  `Reader::open`, `open_tty`, `panic_output`'s `/dev/tty` fallback,
+  `TtyrBackend::size` and `window_size` (`src/terminal/unix.rs`,
+  `src/reader.rs`, `src/backend.rs`) all need a controlling tty, which the pty
+  tests and CI do not have; the tests use the `_of`, `_with`, `_on` and
+  `from_fd` forms instead. These are the entry points every consumer calls.
+  Evidence: the uncovered lines in the coverage run (`terminal/unix.rs` at
+  75.34% of lines is these functions). Fix: a test that forks a child, puts it
+  in a new session on the pty (`setsid`, then `ioctl_tiocsctty` in rustix),
+  calls them there and reports the results through a pipe. On Windows
+  `AllocConsole` gives the tests a console, so `Reader::open`, `terminal::size`
+  and `enable_raw_mode` are covered there; the backend's `size` and
+  `window_size` are not covered on any platform.
+- **The guard's failure paths have no test.** `restore` with a writer that fails
+  (the doc promises the record is cleared and raw mode turned off anyway),
+  `enable` with a writer that fails (the mode must not be recorded),
+  `restore_after_panic` while `ON` or `RAW` is held (the `WouldBlock` arm of
+  `lock_after_panic` in `src/terminal.rs` is uncovered), and `suspend_with`
+  whose `f` panics (the terminal stays given back, the modes are lost). All
+  inferred from reading and the coverage run. `src/command/tests.rs` already has
+  a `Broken` writer to reuse.
+- **`Mode::ColorSchemeReports`, `Mode::ModifyOtherKeys` and `Mode::Win32Input`
+  never go through `enable`, `disable` or `restore`.** Their `write_on` and
+  `write_off` arms in `src/terminal/guard.rs` are uncovered; only the bare
+  commands are checked in `src/terminal/modes/tests.rs`. A table test over every
+  `Mode` variant asserting its on bytes, off bytes and place in `restore`'s
+  reverse order would close it, and runs on every platform.
+- **The `serde` feature has no test.** Nothing serializes an `Event` and reads
+  it back; `cargo test --all-features` only compiles the derives. tmxr sends
+  `Event`s between its client and server with it. A round trip needs a format
+  crate as a dev-dependency (`serde_json` or the `postcard` tmxr uses), the
+  owner's call.
+- **Kitty's functional keys, SS3 keys and `ModeSetting` are tested by sample,
+  not by table.** Uncovered in the coverage run: `functional_key`
+  (`src/event/decoder/csi.rs`) for the keypad codes between 57400 and 57426
+  other than 57414; `letter_key`'s `B` and `C`; `tilde_code` for 28, 29 and 31
+  to 34; `ModeSetting::Set`, `PermanentlySet` and `PermanentlyReset`; SS3 `B`,
+  `C`, `H`, `F`, `E` and the keypad `X j l m n o` (`src/event/decoder.rs`); and
+  most of the named-key arms of `ConsoleKeys::code` (`src/event/console.rs`).
+  Each is a table copied from a spec, where a transcription slip passes every
+  existing test. Fix: table tests over the whole of each spec table (the kitty
+  spec's functional key table, xterm's `CSI n ~` numbers, DECRPM's values,
+  winuser.h's VK codes).
+- **The reader's signal and interrupt paths are untested.** `EINTR` from
+  `select` and from `read`, a full wake pipe (`WouldBlock` in
+  `WakeHandle::wake`) and `drain`'s branches (`src/reader/unix.rs`) are
+  uncovered; the Windows `WAIT_FAILED` and unexpected-result arms likewise. Hard
+  to drive deterministically; recorded as a gap, not reviewed.
+- **The timing-dependent pty tests are the likeliest source of the one
+  unexplained failure** (see Unexplained). `sigwinch_with_input_keeps_both`
+  (`src/reader/tests.rs`) sleeps 50 ms and expects both the byte and the signal
+  to have landed; `collect_answers_returns_a_wake_that_comes_while_it_waits` and
+  `a_waker_wakes_a_wait_from_another_thread` sleep before acting;
+  `a_timed_out_poll_returns_false_promptly` bounds the wait with `LONG`. Under a
+  load average in the teens any of these can miss. Fix: wait on observable state
+  (poll until both events are in) instead of a fixed sleep, and keep the name if
+  one fails again.
+- **Tested on one platform only, or not at all, among the public API:**
+  `terminal::suspend` (nowhere, recorded under phase 04); `Reader::open` and
+  `Reader::set_kitty_keyboard` (nowhere); `TtyrBackend::writer` and `writer_mut`
+  (nowhere, trivial); `Mode::VirtualTerminalInput` (Windows only, as it exists
+  only there). The reader tests themselves are mirrored name for name between
+  `src/reader/tests.rs` and `src/reader/windows/tests.rs`, and the console
+  record mapping (`src/event/console`) is tested on every platform, so the
+  decoder and the guard's record have no platform gap.
+
+### Docs and API
+
+- **`KeyEvent`'s `PartialEq` and `Hash` include `encoding`, `shifted`,
+  `base_layout` and `text`, so comparing whole events is a porting trap.**
+  crossterm code writes
+  `if key == KeyEvent::new(KeyCode::Char('q'), KeyModifiers::CONTROL)` and keys
+  `HashMap<KeyEvent, Action>` keymaps. `KeyEvent::new` sets `encoding: Kitty`
+  (`src/event/key.rs`), so a legacy terminal's Ctrl+q (encoding `Legacy`) never
+  equals the hand-built event, and under kitty flags 4 or 16 `shifted` and
+  `text` make the same key unequal too. ttyr's own tests add
+  `.with_encoding(KeyEncoding::Legacy)` to every expected legacy event for this
+  reason. Verified by reading the derive and the tests. Options: say so on
+  `KeyEvent` and `KeyEvent::new`; add a comparison that looks only at `key`,
+  `modifiers`, `kind` and `state` (or at `logical_char`); or hand-write
+  `PartialEq`/`Hash` without `encoding`. A design call to make with hjkl's and
+  tmxr's keymaps before phase 08.
+- **`TtyrBackend::size` and `window_size` always open `/dev/tty`**
+  (`src/backend.rs` calls `terminal::size`, which calls `open_tty`), so a
+  program with no controlling terminal, the `setsid` launcher case
+  `enable_raw_mode_on` and `size_of` were added for, fails every
+  `Terminal::draw` (ratatui's autoresize calls `size`). crossterm's backend
+  reads stdout's size. Inferred from reading. Fix: let the backend take the
+  terminal to measure (`TtyrBackend::with_tty(fd)`), or measure the writer's fd
+  when it is a tty.
+- **`restore_on_panic` restores on every panic, including ones the program
+  catches.** The hook (`src/terminal/guard.rs`) runs for a worker thread's panic
+  and inside `catch_unwind`, takes the `ON` record and `RAW` away, and the
+  program that goes on finds a cooked terminal, no modes and
+  `is_raw_mode_enabled()` false, with no event to say so. ratatui's and
+  crossterm's hooks behave the same, but the doc does not say it. Verified:
+  `a_panic_restores_the_terminal` relies on exactly this with `catch_unwind`.
+  Fix: document it, and say that a program that catches panics re-enables raw
+  mode and its modes itself.
+- **`Event::Wake` and `Event::Resize` are documented as Unix.** `Event::Wake`'s
+  doc (`src/event.rs`) says "`ttyr::reader`, on Unix"; the Windows reader pushes
+  it too (`Source::wait` in `src/reader/windows.rs`). `Event::Resize`'s doc says
+  the reader sends it on `SIGWINCH`; on Windows it is
+  `WINDOW_BUFFER_SIZE_EVENT`, and only once raw mode has turned
+  `ENABLE_WINDOW_INPUT` on, which `Reader::open`'s Windows doc says and the
+  event's does not. Verified by reading.
+- **`KeyEventState::CAPS_LOCK` and `NUM_LOCK` are documented as "kitty protocol
+  only".** `modified_char_key` (`src/event/decoder/csi.rs`) sets `CAPS_LOCK` for
+  xterm's modifyOtherKeys form, and `state` in `src/event/console.rs` sets both
+  from the console's `CAPSLOCK_ON` and `NUMLOCK_ON`;
+  `xterm_caps_lock_letter_is_not_shift` and
+  `shift_and_caps_lock_letters_read_as_the_decoder_reads_them` assert it.
+  `Report::TerminalColor`'s doc likewise says answers come "in `rgb:` form"
+  where `#` and `rgbi:` are read too. Verified by reading.
+- **`KeypadBegin` carries `KEYPAD` in one form and not the other.**
+  `CSI 57427 u` gets `KeyEventState::KEYPAD` from `functional_key`; kitty's
+  actual encoding of the key, `CSI E` and `CSI 1 ; mods E` (its `key_encoding.c`
+  writes `S(1, 'E')`; the spec table's `57427 ~` row is not what the encoder
+  emits), goes through `letter_key` with no state, as does SS3 `ESC O E`.
+  Verified by running both forms. Fix: `KeypadBegin` is a keypad key by
+  definition, so either always set `KEYPAD` or never.
+- **`MouseButton` is `#[non_exhaustive]` while `KeyCode` and `MouseEventKind`
+  are not**, against the Considered-and-declined entry that keeps a port's
+  exhaustive matches compiling. `Back` and `Forward` already break a crossterm
+  port's `match` on the button; `non_exhaustive` then forces a wildcard arm as
+  well. Either is defensible; record which, and apply it to all three.
+- **crossterm pieces a port will look for and not find, with no note saying
+  why:** `terminal::SetSize` (`CSI 8 ; rows ; cols t`), `cursor::position()` and
+  `supports_keyboard_enhancement` (blocking, left out on purpose per 01's
+  principles, but README and the docs do not say so), the `Command` trait's
+  `execute_winapi` and `is_ansi_code_supported` (a port that implemented
+  `Command` for its own types compiles after deleting them), and
+  `event::poll`/`read` as free functions (here methods on `Reader`). A short
+  porting-notes section in README or `docs/plan/08-adoption.md` would pay for
+  itself in phase 08.
+
+### Code quality
+
+- **Three copies of the "an upper-case letter arrived" rule.** `char_key`
+  (`src/event/decoder.rs`), `modified_char_key` (`src/event/decoder/csi.rs`) and
+  `char_event` (`src/event/console.rs`) each decide how an upper-case character
+  becomes a lower-case `key` with Shift, `shifted` and Caps Lock, with
+  `single_lower` in the decoder, an inline `to_lowercase` in `char_event`, and
+  `single_upper` in `src/event/key.rs` for the inverse. They already differ
+  (Caps Lock alone gives `shifted` in `char_key` and not in `char_event`), and a
+  fix to one does not reach the others. One function taking whether Shift was
+  held and whether Caps Lock is known would hold the knowledge once.
+- **`WindowSize` is defined twice**, in `src/terminal/unix.rs` and
+  `src/terminal/windows.rs`, with the same fields and different docs; a field
+  added to one breaks the other platform in CI only. One definition in
+  `src/terminal.rs`, with the per-platform note on the pixel fields.
+- **The reader tests are duplicated between `src/reader/tests.rs` and
+  `src/reader/windows/tests.rs`**: most tests share a name and a body and differ
+  only in how the terminal is driven (a pty write, an injected record). A fix to
+  one has to be made twice. A shared body over a small "type these bytes" helper
+  per platform would keep them one.
 
 ## Left from phase 02 (events and decoder)
 
