@@ -125,9 +125,28 @@ impl Saved {
         off_bits: CONSOLE_MODE,
         on: bool,
     ) -> io::Result<()> {
+        let saved = self.0.lock().unwrap_or_else(PoisonError::into_inner);
+        Self::apply(saved, mask, on_bits, off_bits, on)
+    }
+
+    /// [`Saved::switch`] off, from a panic hook: skipped when the panic
+    /// came from inside it, with its state held. A failure has nowhere to be
+    /// reported.
+    fn put_back_after_panic(&self, mask: CONSOLE_MODE) {
+        if let Some(saved) = super::lock_after_panic(&self.0) {
+            let _ = Self::apply(saved, mask, 0, 0, false);
+        }
+    }
+
+    fn apply(
+        mut saved: MutexGuard<'_, Option<CONSOLE_MODE>>,
+        mask: CONSOLE_MODE,
+        on_bits: CONSOLE_MODE,
+        off_bits: CONSOLE_MODE,
+        on: bool,
+    ) -> io::Result<()> {
         let input = open_console("CONIN$")?;
         let mode = console_mode(input.as_handle())?;
-        let mut saved = self.0.lock().unwrap_or_else(PoisonError::into_inner);
         let new = if on {
             saved.get_or_insert(mode & mask);
             (mode | on_bits) & !off_bits
@@ -151,15 +170,19 @@ static MOUSE: Saved = Saved::new();
 /// The VT input bit from before `set_virtual_terminal_input(true)`.
 static VT_INPUT: Saved = Saved::new();
 
+/// The input mode bits the mouse changes.
+const MOUSE_BITS: CONSOLE_MODE = ENABLE_MOUSE_INPUT | ENABLE_QUICK_EDIT_MODE;
+
+/// Puts back the input mode bits the modes changed, for a panic hook.
+pub fn put_back_modes_after_panic() {
+    MOUSE.put_back_after_panic(MOUSE_BITS);
+    VT_INPUT.put_back_after_panic(ENABLE_VIRTUAL_TERMINAL_INPUT);
+}
+
 /// Mouse records from the console (`ENABLE_MOUSE_INPUT`), with Quick Edit's
 /// selection taken off the mouse; off, both are as they were before.
 pub fn set_mouse_input(on: bool) -> io::Result<()> {
-    MOUSE.switch(
-        ENABLE_MOUSE_INPUT | ENABLE_QUICK_EDIT_MODE,
-        ENABLE_MOUSE_INPUT,
-        ENABLE_QUICK_EDIT_MODE,
-        on,
-    )
+    MOUSE.switch(MOUSE_BITS, ENABLE_MOUSE_INPUT, ENABLE_QUICK_EDIT_MODE, on)
 }
 
 /// VT input (`ENABLE_VIRTUAL_TERMINAL_INPUT`): the console hands over the

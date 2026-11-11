@@ -5,7 +5,8 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use crate::event::{
-    Event, KeyCode, KeyEncoding, KeyEvent, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind,
+    Event, KeyCode, KeyEncoding, KeyEvent, KeyEventKind, KeyModifiers, KeyboardEnhancementFlags,
+    ModeSetting, MouseButton, MouseEventKind, Report,
 };
 use crate::reader::Reader;
 use crate::terminal::{Console, Mode, disable, enable, window_top};
@@ -16,6 +17,37 @@ const LONG: Duration = Duration::from_secs(5);
 
 fn windows_key(code: KeyCode, modifiers: KeyModifiers) -> KeyEvent {
     KeyEvent::new(code, modifiers).with_encoding(KeyEncoding::Windows)
+}
+
+fn legacy(code: KeyCode) -> Event {
+    Event::Key(KeyEvent::new(code, KeyModifiers::NONE).with_encoding(KeyEncoding::Legacy))
+}
+
+/// VT input on while it lives, so what is written into the input is a
+/// terminal's bytes; off again when the test ends, failed or not.
+struct VtInput;
+
+impl VtInput {
+    fn on() -> Self {
+        enable(&mut Vec::new(), Mode::VirtualTerminalInput).unwrap();
+        Self
+    }
+}
+
+impl Drop for VtInput {
+    fn drop(&mut self) {
+        disable(&mut Vec::new(), Mode::VirtualTerminalInput).unwrap();
+    }
+}
+
+/// Writes `text` into the input as VT input hands it over: a key record
+/// per UTF-16 unit.
+fn type_vt(text: &str) {
+    let records: Vec<_> = text
+        .encode_utf16()
+        .map(|unit| key(0, unit, true, 0))
+        .collect();
+    inject(&records);
 }
 
 #[test]
@@ -189,6 +221,182 @@ fn records_with_no_key_are_the_consoles_bytes_without_vt_input() {
     assert_eq!(
         reader.read().unwrap(),
         Event::Key(windows_key(KeyCode::Char('a'), KeyModifiers::NONE))
+    );
+}
+
+#[test]
+fn a_zero_poll_reports_an_event_already_decoded() {
+    let _console = console();
+    let _vt = VtInput::on();
+    let mut reader = Reader::open().unwrap();
+    type_vt("ab");
+    assert!(reader.poll(LONG).unwrap());
+    // Both keys arrived in one read: the second is ready without a wait.
+    assert_eq!(reader.read().unwrap(), legacy(KeyCode::Char('a')));
+    assert!(reader.poll(Duration::ZERO).unwrap());
+    assert_eq!(reader.read().unwrap(), legacy(KeyCode::Char('b')));
+}
+
+#[test]
+fn with_no_escape_timeout_a_lone_escape_is_read_at_once() {
+    let _console = console();
+    let _vt = VtInput::on();
+    let mut reader = Reader::open().unwrap();
+    type_vt("\x1B");
+    assert!(reader.poll(LONG).unwrap());
+    assert_eq!(reader.read().unwrap(), legacy(KeyCode::Esc));
+}
+
+#[test]
+fn an_escape_timeout_keeps_a_split_sequence_whole() {
+    let _console = console();
+    let _vt = VtInput::on();
+    let mut reader = Reader::open().unwrap();
+    reader.set_escape_timeout(Some(LONG));
+    type_vt("\x1B");
+    // The ESC arrives and is held, not read as Escape.
+    assert!(!reader.poll(Duration::from_millis(100)).unwrap());
+    assert!(!reader.poll(Duration::ZERO).unwrap());
+    type_vt("[A");
+    assert_eq!(reader.read().unwrap(), legacy(KeyCode::Up));
+}
+
+#[test]
+fn an_escape_timeout_reads_a_lone_escape_once_it_passes() {
+    let _console = console();
+    let _vt = VtInput::on();
+    let mut reader = Reader::open().unwrap();
+    let timeout = Duration::from_millis(100);
+    reader.set_escape_timeout(Some(timeout));
+    let start = Instant::now();
+    type_vt("\x1B");
+    assert!(reader.poll(LONG).unwrap());
+    assert!(start.elapsed() >= timeout);
+    assert_eq!(reader.read().unwrap(), legacy(KeyCode::Esc));
+}
+
+#[test]
+fn a_paste_waits_past_a_flush_for_its_end() {
+    let _console = console();
+    let _vt = VtInput::on();
+    let mut reader = Reader::open().unwrap();
+    type_vt("\x1B[200~half");
+    // The flush leaves the paste held, and the wait does not spin on it.
+    assert!(!reader.poll(Duration::from_millis(100)).unwrap());
+    type_vt(" and half\x1B[201~");
+    assert_eq!(reader.read().unwrap(), Event::Paste("half and half".into()));
+}
+
+#[test]
+fn a_long_burst_arrives_whole() {
+    let _console = console();
+    let _vt = VtInput::on();
+    let mut reader = Reader::open().unwrap();
+    // Far more records than one read takes, so sequences are split
+    // between reads.
+    let count = 2000;
+    type_vt(&"\x1B[1;5Ah".repeat(count));
+    let ctrl_up = Event::Key(
+        KeyEvent::new(KeyCode::Up, KeyModifiers::CONTROL).with_encoding(KeyEncoding::Legacy),
+    );
+    for _ in 0..count {
+        assert_eq!(reader.read().unwrap(), ctrl_up);
+        assert_eq!(reader.read().unwrap(), legacy(KeyCode::Char('h')));
+    }
+    assert!(!reader.poll(Duration::from_millis(50)).unwrap());
+}
+
+#[test]
+fn a_second_reader_fails_until_the_first_is_dropped() {
+    let _console = console();
+    let first = Reader::open().unwrap();
+    let err = Reader::open().unwrap_err();
+    assert_eq!(err.kind(), std::io::ErrorKind::ResourceBusy);
+    drop(first);
+    Reader::open().unwrap();
+}
+
+#[test]
+fn a_waker_outliving_its_reader_does_nothing() {
+    let _console = console();
+    let reader = Reader::open().unwrap();
+    let waker = reader.waker();
+    drop(reader);
+    waker.wake().unwrap();
+}
+
+#[test]
+fn collect_answers_keeps_the_keys_typed_meanwhile_and_stops_at_da1() {
+    let _console = console();
+    let _vt = VtInput::on();
+    let mut reader = Reader::open().unwrap();
+    type_vt("\x1B[?1ua\x1BP>|kitty(0.39.1)\x1B\\b\x1B[?62;22cz");
+    let answers = reader.collect_answers(LONG).unwrap();
+    assert!(answers.complete);
+    assert_eq!(
+        answers.events,
+        [
+            Event::Report(Report::KeyboardEnhancementFlags(
+                KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES
+            )),
+            legacy(KeyCode::Char('a')),
+            Event::Report(Report::TerminalVersion("kitty(0.39.1)".into())),
+            legacy(KeyCode::Char('b')),
+            Event::Report(Report::PrimaryDeviceAttributes(vec![62, 22])),
+        ]
+    );
+    let others: Vec<_> = answers.others().cloned().collect();
+    assert_eq!(
+        others,
+        [legacy(KeyCode::Char('a')), legacy(KeyCode::Char('b'))]
+    );
+    // What came after DA1 is left to read.
+    assert_eq!(reader.read().unwrap(), legacy(KeyCode::Char('z')));
+}
+
+#[test]
+fn collect_answers_gives_up_at_the_timeout() {
+    let _console = console();
+    let _vt = VtInput::on();
+    let mut reader = Reader::open().unwrap();
+    type_vt("\x1B[?2026;2$yq");
+    let timeout = Duration::from_millis(100);
+    let start = Instant::now();
+    let answers = reader.collect_answers(timeout).unwrap();
+    assert!(start.elapsed() >= timeout && start.elapsed() < LONG);
+    assert!(!answers.complete);
+    let mode = Report::Mode {
+        mode: 2026,
+        private: true,
+        setting: ModeSetting::Reset,
+    };
+    assert_eq!(
+        answers.events,
+        [Event::Report(mode), legacy(KeyCode::Char('q'))]
+    );
+}
+
+#[test]
+fn collect_answers_returns_a_wake_that_comes_while_it_waits() {
+    let _console = console();
+    let _vt = VtInput::on();
+    let mut reader = Reader::open().unwrap();
+    let waker = reader.waker();
+    let answering = thread::spawn(move || {
+        thread::sleep(Duration::from_millis(50));
+        waker.wake().unwrap();
+        thread::sleep(Duration::from_millis(50));
+        type_vt("\x1B[?62c");
+    });
+    let answers = reader.collect_answers(LONG).unwrap();
+    answering.join().unwrap();
+    assert!(answers.complete);
+    assert_eq!(
+        answers.events,
+        [
+            Event::Wake,
+            Event::Report(Report::PrimaryDeviceAttributes(vec![62])),
+        ]
     );
 }
 

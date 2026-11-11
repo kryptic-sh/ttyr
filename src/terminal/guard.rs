@@ -27,7 +27,7 @@ use crate::command::Command;
 use crate::cursor::Show;
 use crate::event::KeyboardEnhancementFlags;
 
-#[cfg(all(test, unix))]
+#[cfg(test)]
 mod tests;
 
 /// The modes on, in the order they were turned on.
@@ -265,6 +265,9 @@ pub fn restore_on_panic() {
 /// A failure has nowhere to be reported.
 fn restore_after_panic() {
     let modes = super::lock_after_panic(&ON).map(|mut on| mem::take(&mut *on));
+    // As in `release`: the modes' console bits, then raw mode's.
+    #[cfg(windows)]
+    super::windows::put_back_modes_after_panic();
     let tty = take_raw_after_panic();
     let modes = modes.unwrap_or_default();
     if modes.is_empty() && tty.is_none() {
