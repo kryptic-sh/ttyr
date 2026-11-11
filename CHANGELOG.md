@@ -8,6 +8,10 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- Windows: Ctrl with an OEM key the console gives no character for (Ctrl+;,
+  Ctrl+, Ctrl+. and the rest) is now that key, its character on a US layout,
+  where before the key was dropped. In the console's records and in
+  win32-input-mode alike.
 - `Reader` over a non-blocking fd (`Reader::from_fd` with `O_NONBLOCK` set, as
   some async runtimes leave stdin) no longer fails `poll` and `read` with
   `WouldBlock` when the tty has nothing to read after all; the wait goes on.

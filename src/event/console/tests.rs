@@ -84,6 +84,27 @@ fn ctrl_keys_are_the_key_ctrl_was_held_with() {
         press(VK_SPACE, unit(' '), LEFT_CTRL),
         Some(key(KeyCode::Char(' '), ctrl))
     );
+    // The OEM keys with no control code: the console gives no character,
+    // so the key they are on a US layout.
+    for (vk, c) in [
+        (0xBA, ';'),
+        (0xBB, '='),
+        (0xBC, ','),
+        (0xBD, '-'),
+        (0xBE, '.'),
+        (0xBF, '/'),
+        (0xC0, '`'),
+        (0xDB, '['),
+        (0xDC, '\\'),
+        (0xDD, ']'),
+        (0xDE, '\''),
+    ] {
+        assert_eq!(press(vk, 0, LEFT_CTRL), Some(key(KeyCode::Char(c), ctrl)));
+    }
+    assert_eq!(
+        press(0xBA, 0, LEFT_CTRL | SHIFT),
+        Some(key(KeyCode::Char(';'), ctrl | KeyModifiers::SHIFT))
+    );
     // Where crossterm's console reader lost Ctrl.
     assert_eq!(
         press(VK_RETURN, 0x0A, LEFT_CTRL),

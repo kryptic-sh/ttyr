@@ -61,15 +61,6 @@ first within each group.
   mask the `Saved` statics' bits out of raw mode's snapshot, or restore raw mode
   before the modes; and a test that enables the mouse before raw mode and checks
   the bits after `restore`.
-- **Windows: a Ctrl chord whose key has no control code is dropped.**
-  `control_key` (`src/event/console.rs`) returns `None` when the record's `unit`
-  is 0 and the virtual-key is not a letter or digit: Ctrl+; , Ctrl+, and Ctrl+.
-  (the OEM keys) give no character from the console, so the key never reaches
-  the program, where crossterm reads the layout with `ToUnicodeEx`. Inferred
-  from reading; the `0 => return None` arm is uncovered in the coverage run. The
-  phase 07 note about `ToUnicodeEx` covers misread keys, not dropped ones. Fix:
-  a US-layout fallback table for the OEM virtual-keys, or `ToUnicodeEx` on
-  Windows.
 - **A DA2 or DA1 answer with a value above 65535 decodes as `Event::Unknown`.**
   `flat` (`src/event/decoder/csi.rs`) narrows each parameter to `u16`; a
   terminal whose DA2 version field is larger loses the whole report (foot, for
@@ -343,7 +334,10 @@ first within each group.
 - **Ctrl with a non-letter key reads the control code**, not the layout: on a
   layout where `[` is not where VK_OEM_4 sits, Ctrl+that key still reads as
   Ctrl+\[ when the console gives 0x1B. Reading the layout needs `ToUnicodeEx`
-  (crossterm's way), Windows-only.
+  (crossterm's way), Windows-only. Where the console gives no control code at
+  all (Ctrl+; and the other OEM keys), `us_oem_char` in `src/event/console.rs`
+  names the key by its US character, so on another layout it is the US key at
+  that place.
 - **win32-input-mode's repeat count (`Rc`) is not read.** Windows Terminal sends
   a held key as more records, which read as repeats.
 

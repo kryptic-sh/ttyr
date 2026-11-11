@@ -95,6 +95,17 @@ const VK_MEDIA_NEXT_TRACK: u16 = 0xB0;
 const VK_MEDIA_PREV_TRACK: u16 = 0xB1;
 const VK_MEDIA_STOP: u16 = 0xB2;
 const VK_MEDIA_PLAY_PAUSE: u16 = 0xB3;
+const VK_OEM_1: u16 = 0xBA;
+const VK_OEM_PLUS: u16 = 0xBB;
+const VK_OEM_COMMA: u16 = 0xBC;
+const VK_OEM_MINUS: u16 = 0xBD;
+const VK_OEM_PERIOD: u16 = 0xBE;
+const VK_OEM_2: u16 = 0xBF;
+const VK_OEM_3: u16 = 0xC0;
+const VK_OEM_4: u16 = 0xDB;
+const VK_OEM_5: u16 = 0xDC;
+const VK_OEM_6: u16 = 0xDD;
+const VK_OEM_7: u16 = 0xDE;
 
 /// Turns console key records into key events, keeping what spans records:
 /// the key held down (so a second down is a repeat) and the first half of a
@@ -244,17 +255,38 @@ enum Key {
 
 /// The key Ctrl was held with, where the console gives its control code
 /// (`unit` below 0x20) or nothing: a letter or digit by its virtual-key
-/// code, which names it on every layout, and otherwise the character whose
-/// control code it is (`0x1B` is Ctrl+\[).
+/// code, which names it on every layout; otherwise the character whose
+/// control code it is (`0x1B` is Ctrl+\[); and with no control code (Ctrl+;
+/// and the other OEM keys), the key's character on a US layout, as the
+/// console gives none to read the layout's from.
 fn control_key(record: &KeyRecord) -> Option<Key> {
     let c = match u8::try_from(record.vk).ok()? {
         vk @ (b'A'..=b'Z' | b'0'..=b'9') => char::from(vk).to_ascii_lowercase(),
         _ => match record.unit {
-            0 => return None,
+            0 => us_oem_char(record.vk)?,
             unit => char::from(u8::try_from(unit).ok()? | 0x40).to_ascii_lowercase(),
         },
     };
     Some(Key::Char(c))
+}
+
+/// The unshifted character of an OEM key on a US layout, as winuser.h
+/// names them.
+const fn us_oem_char(vk: u16) -> Option<char> {
+    Some(match vk {
+        VK_OEM_1 => ';',
+        VK_OEM_PLUS => '=',
+        VK_OEM_COMMA => ',',
+        VK_OEM_MINUS => '-',
+        VK_OEM_PERIOD => '.',
+        VK_OEM_2 => '/',
+        VK_OEM_3 => '`',
+        VK_OEM_4 => '[',
+        VK_OEM_5 => '\\',
+        VK_OEM_6 => ']',
+        VK_OEM_7 => '\'',
+        _ => return None,
+    })
 }
 
 /// A typed character's event, as the decoder makes a legacy terminal's: an
