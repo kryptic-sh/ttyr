@@ -33,6 +33,12 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- Windows: a console that fails to take a mode's input bits (the console gone,
+  `CONIN$` not openable) no longer stops `restore`: the off sequences are still
+  written, raw mode still put back and the record cleared, and the first error
+  is returned at the end. `enable` sets the console before writing, so a failure
+  there leaves nothing written and nothing recorded instead of a mode on the
+  terminal that `restore` never turns off.
 - Unix: `terminal::size` and `window_size`, and so `TtyrBackend::size` and
   `window_size` (ratatui's autoresize), measure stdout when there is no
   controlling terminal to open, as crossterm does, instead of failing every

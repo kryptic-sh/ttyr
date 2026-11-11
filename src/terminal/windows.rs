@@ -145,16 +145,18 @@ impl Saved {
         off_bits: CONSOLE_MODE,
         on: bool,
     ) -> io::Result<()> {
+        // Off, the saved bits are taken first: a console that cannot be
+        // opened is gone, and its bits mean nothing to the next one.
+        let put_back = if on { None } else { Some(saved.take()) };
         let input = open_console("CONIN$")?;
         let mode = console_mode(input.as_handle())?;
-        let new = if on {
-            saved.get_or_insert(mode & mask);
-            (mode | on_bits) & !off_bits
-        } else {
-            match saved.take() {
-                Some(bits) => (mode & !mask) | bits,
-                None => return Ok(()),
+        let new = match put_back {
+            None => {
+                saved.get_or_insert(mode & mask);
+                (mode | on_bits) & !off_bits
             }
+            Some(Some(bits)) => (mode & !mask) | bits,
+            Some(None) => return Ok(()),
         };
         let extended = if (mask | on_bits | off_bits) & ENABLE_QUICK_EDIT_MODE != 0 {
             ENABLE_EXTENDED_FLAGS

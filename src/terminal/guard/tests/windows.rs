@@ -169,3 +169,44 @@ fn with_nothing_on_at_the_panic_there_is_nothing_to_resume() {
     assert!(out.is_empty());
     assert!(!is_raw_mode_enabled());
 }
+
+/// Runs `f` with the process's console gone, as when its window closed,
+/// then gives the process a console again.
+fn without_a_console<T>(f: impl FnOnce() -> T) -> T {
+    use windows_sys::Win32::System::Console::{AllocConsole, FreeConsole};
+    // SAFETY: no arguments; the tests that use the console hold its lock.
+    assert_ne!(unsafe { FreeConsole() }, 0);
+    let result = f();
+    // SAFETY: no arguments.
+    unsafe { AllocConsole() };
+    result
+}
+
+#[test]
+fn a_console_that_fails_leaves_an_enabled_mode_unwritten_and_unrecorded() {
+    let _console = console();
+    let mut out = Vec::new();
+    without_a_console(|| assert!(enable(&mut out, NORMAL).is_err()));
+    assert!(out.is_empty());
+    // Not recorded: nothing to turn off.
+    restore(&mut out).unwrap();
+    assert!(out.is_empty());
+}
+
+#[test]
+fn a_console_that_fails_still_writes_the_off_sequences_on_restore() {
+    let _console = console();
+    let mut out = Vec::new();
+    enable(&mut out, Mode::BracketedPaste).unwrap();
+    enable(&mut out, NORMAL).unwrap();
+    out.clear();
+    without_a_console(|| assert!(restore(&mut out).is_err()));
+    assert_eq!(
+        text(&out),
+        "\x1B[?1006l\x1B[?1003l\x1B[?1002l\x1B[?1000l\x1B[?2004l\x1B[?25h"
+    );
+    // The record is cleared all the same.
+    out.clear();
+    restore(&mut out).unwrap();
+    assert!(out.is_empty());
+}

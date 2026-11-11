@@ -34,17 +34,6 @@ first within each group.
   when nothing has arrived for some time (no new API, but a paste a slow ConPTY
   delivers in pieces would then be cut in two). crossterm's parser waits the
   same way, as recalled, not checked.
-- **Windows: a failing `SetConsoleMode` in `release` skips the off sequences and
-  leaves raw mode on.** In `release` (`src/terminal/guard.rs`) the
-  `#[cfg(windows)]` loop `mode.set_console(false)?` runs after `mem::take` has
-  emptied `ON` and before the off sequences are written and `take_raw` runs, so
-  on an error (the console gone, `CONIN$` not openable) the record is already
-  empty, nothing is written, and raw mode stays on, which the doc on `restore`
-  ("the record is cleared even if writing fails", raw mode off) contradicts.
-  `enable` has the inverse: `out.write_all` then `mode.set_console(true)?`, so
-  on an error the sequence is on the terminal but not recorded and `restore`
-  never turns it off. Inferred from reading. Fix: keep going on a console error
-  and report it at the end, as the Unix path does with `wrote`.
 - **Windows: a console mode turned on before raw mode is left on by `restore`.**
   `Saved::apply` (`src/terminal/windows.rs`) saves the bits a mode changes when
   it goes on and puts them back when it goes off; `release` does that first and

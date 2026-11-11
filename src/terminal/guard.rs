@@ -167,9 +167,17 @@ pub fn enable(out: &mut impl Write, mode: Mode) -> io::Result<()> {
         on[i].write_off(&mut bytes)?;
     }
     mode.write_on(&mut bytes)?;
-    out.write_all(bytes.as_bytes())?;
+    // The console first, so that a console that fails leaves nothing
+    // written; writing that fails puts the console back.
     #[cfg(windows)]
     mode.set_console(true)?;
+    let wrote = out.write_all(bytes.as_bytes());
+    #[cfg(windows)]
+    if wrote.is_err() {
+        // The write's error is the one reported.
+        let _ = mode.set_console(false);
+    }
+    wrote?;
     match at {
         Some(i) => on[i] = mode,
         None => on.push(mode),
@@ -210,11 +218,14 @@ pub fn restore(out: &mut impl Write) -> io::Result<()> {
 fn release(out: &mut impl Write) -> io::Result<(Vec<Mode>, Option<RawTty>)> {
     let modes = mem::take(&mut *on());
     // Each mode puts back the console's bits it changed, before raw mode
-    // puts back the rest.
+    // puts back the rest. One that fails does not stop the others, the
+    // off sequences or raw mode; the first failure is reported at the end.
     #[cfg(windows)]
-    for mode in modes.iter().rev() {
-        mode.set_console(false)?;
-    }
+    let console = modes
+        .iter()
+        .rev()
+        .map(|mode| mode.set_console(false))
+        .fold(Ok(()), io::Result::and);
     let wrote = if modes.is_empty() && !is_raw_mode_enabled() {
         Ok(())
     } else {
@@ -225,6 +236,8 @@ fn release(out: &mut impl Write) -> io::Result<(Vec<Mode>, Option<RawTty>)> {
     };
     let tty = take_raw();
     wrote?;
+    #[cfg(windows)]
+    console?;
     Ok((modes, tty?))
 }
 
