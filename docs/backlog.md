@@ -72,17 +72,6 @@ first within each group.
   `Event`s between its client and server with it. A round trip needs a format
   crate as a dev-dependency (`serde_json` or the `postcard` tmxr uses), the
   owner's call.
-- **Kitty's functional keys, SS3 keys and `ModeSetting` are tested by sample,
-  not by table.** Uncovered in the coverage run: `functional_key`
-  (`src/event/decoder/csi.rs`) for the keypad codes between 57400 and 57426
-  other than 57414; `letter_key`'s `B` and `C`; `tilde_code` for 28, 29 and 31
-  to 34; `ModeSetting::Set`, `PermanentlySet` and `PermanentlyReset`; SS3 `B`,
-  `C`, `H`, `F`, `E` and the keypad `X j l m n o` (`src/event/decoder.rs`); and
-  most of the named-key arms of `ConsoleKeys::code` (`src/event/console.rs`).
-  Each is a table copied from a spec, where a transcription slip passes every
-  existing test. Fix: table tests over the whole of each spec table (the kitty
-  spec's functional key table, xterm's `CSI n ~` numbers, DECRPM's values,
-  winuser.h's VK codes).
 - **The reader's signal and interrupt paths are untested.** `EINTR` from
   `select` and from `read`, a full wake pipe (`WouldBlock` in
   `WakeHandle::wake`) and `drain`'s branches (`src/reader/unix.rs`) are

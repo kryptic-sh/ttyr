@@ -229,3 +229,44 @@ fn named_keys() {
         KeyCode::Media(MediaKeyCode::RaiseVolume)
     );
 }
+
+#[test]
+fn named_key_table() {
+    // winuser.h's virtual-key codes, spelled as numbers so that a slip in
+    // the constants above shows here.
+    let mut table = vec![
+        (0x08, KeyCode::Backspace),
+        (0x09, KeyCode::Tab),
+        (0x0C, KeyCode::KeypadBegin),
+        (0x0D, KeyCode::Enter),
+        (0x13, KeyCode::Pause),
+        (0x1B, KeyCode::Esc),
+        (0x20, KeyCode::Char(' ')),
+        (0x21, KeyCode::PageUp),
+        (0x22, KeyCode::PageDown),
+        (0x23, KeyCode::End),
+        (0x24, KeyCode::Home),
+        (0x25, KeyCode::Left),
+        (0x26, KeyCode::Up),
+        (0x27, KeyCode::Right),
+        (0x28, KeyCode::Down),
+        (0x2C, KeyCode::PrintScreen),
+        (0x2D, KeyCode::Insert),
+        (0x2E, KeyCode::Delete),
+        (0x5D, KeyCode::Menu),
+        (0xAD, KeyCode::Media(MediaKeyCode::MuteVolume)),
+        (0xAE, KeyCode::Media(MediaKeyCode::LowerVolume)),
+        (0xAF, KeyCode::Media(MediaKeyCode::RaiseVolume)),
+        (0xB0, KeyCode::Media(MediaKeyCode::TrackNext)),
+        (0xB1, KeyCode::Media(MediaKeyCode::TrackPrevious)),
+        (0xB2, KeyCode::Media(MediaKeyCode::Stop)),
+        (0xB3, KeyCode::Media(MediaKeyCode::PlayPause)),
+    ];
+    // VK_F1 (0x70) to VK_F24 (0x87).
+    table.extend((1..=24).map(|n| (0x6F + u16::from(n), KeyCode::F(n))));
+    for (vk, expected) in table {
+        // Enhanced, so the navigation keys are the dedicated ones.
+        let event = press(vk, 0, ENHANCED_KEY).unwrap();
+        assert_eq!(event.key, expected, "{vk:#x}");
+    }
+}

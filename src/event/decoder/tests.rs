@@ -592,6 +592,257 @@ fn a_chord_is_written_either_way() {
 }
 
 #[test]
+fn kitty_functional_key_table() {
+    // The kitty spec's "Functional key definitions", every row given as a
+    // code point (`CSI code u`), as crossterm's table also spells them.
+    for (code, expected, keypad) in [
+        (57358, KeyCode::CapsLock, false),
+        (57359, KeyCode::ScrollLock, false),
+        (57360, KeyCode::NumLock, false),
+        (57361, KeyCode::PrintScreen, false),
+        (57362, KeyCode::Pause, false),
+        (57363, KeyCode::Menu, false),
+        (57376, KeyCode::F(13), false),
+        (57377, KeyCode::F(14), false),
+        (57378, KeyCode::F(15), false),
+        (57379, KeyCode::F(16), false),
+        (57380, KeyCode::F(17), false),
+        (57381, KeyCode::F(18), false),
+        (57382, KeyCode::F(19), false),
+        (57383, KeyCode::F(20), false),
+        (57384, KeyCode::F(21), false),
+        (57385, KeyCode::F(22), false),
+        (57386, KeyCode::F(23), false),
+        (57387, KeyCode::F(24), false),
+        (57388, KeyCode::F(25), false),
+        (57389, KeyCode::F(26), false),
+        (57390, KeyCode::F(27), false),
+        (57391, KeyCode::F(28), false),
+        (57392, KeyCode::F(29), false),
+        (57393, KeyCode::F(30), false),
+        (57394, KeyCode::F(31), false),
+        (57395, KeyCode::F(32), false),
+        (57396, KeyCode::F(33), false),
+        (57397, KeyCode::F(34), false),
+        (57398, KeyCode::F(35), false),
+        (57399, KeyCode::Char('0'), true),
+        (57400, KeyCode::Char('1'), true),
+        (57401, KeyCode::Char('2'), true),
+        (57402, KeyCode::Char('3'), true),
+        (57403, KeyCode::Char('4'), true),
+        (57404, KeyCode::Char('5'), true),
+        (57405, KeyCode::Char('6'), true),
+        (57406, KeyCode::Char('7'), true),
+        (57407, KeyCode::Char('8'), true),
+        (57408, KeyCode::Char('9'), true),
+        (57409, KeyCode::Char('.'), true),
+        (57410, KeyCode::Char('/'), true),
+        (57411, KeyCode::Char('*'), true),
+        (57412, KeyCode::Char('-'), true),
+        (57413, KeyCode::Char('+'), true),
+        (57414, KeyCode::Enter, true),
+        (57415, KeyCode::Char('='), true),
+        (57416, KeyCode::Char(','), true),
+        (57417, KeyCode::Left, true),
+        (57418, KeyCode::Right, true),
+        (57419, KeyCode::Up, true),
+        (57420, KeyCode::Down, true),
+        (57421, KeyCode::PageUp, true),
+        (57422, KeyCode::PageDown, true),
+        (57423, KeyCode::Home, true),
+        (57424, KeyCode::End, true),
+        (57425, KeyCode::Insert, true),
+        (57426, KeyCode::Delete, true),
+        (57427, KeyCode::KeypadBegin, true),
+        (57428, KeyCode::Media(MediaKeyCode::Play), false),
+        (57429, KeyCode::Media(MediaKeyCode::Pause), false),
+        (57430, KeyCode::Media(MediaKeyCode::PlayPause), false),
+        (57431, KeyCode::Media(MediaKeyCode::Reverse), false),
+        (57432, KeyCode::Media(MediaKeyCode::Stop), false),
+        (57433, KeyCode::Media(MediaKeyCode::FastForward), false),
+        (57434, KeyCode::Media(MediaKeyCode::Rewind), false),
+        (57435, KeyCode::Media(MediaKeyCode::TrackNext), false),
+        (57436, KeyCode::Media(MediaKeyCode::TrackPrevious), false),
+        (57437, KeyCode::Media(MediaKeyCode::Record), false),
+        (57438, KeyCode::Media(MediaKeyCode::LowerVolume), false),
+        (57439, KeyCode::Media(MediaKeyCode::RaiseVolume), false),
+        (57440, KeyCode::Media(MediaKeyCode::MuteVolume), false),
+        (57441, KeyCode::Modifier(ModifierKeyCode::LeftShift), false),
+        (
+            57442,
+            KeyCode::Modifier(ModifierKeyCode::LeftControl),
+            false,
+        ),
+        (57443, KeyCode::Modifier(ModifierKeyCode::LeftAlt), false),
+        (57444, KeyCode::Modifier(ModifierKeyCode::LeftSuper), false),
+        (57445, KeyCode::Modifier(ModifierKeyCode::LeftHyper), false),
+        (57446, KeyCode::Modifier(ModifierKeyCode::LeftMeta), false),
+        (57447, KeyCode::Modifier(ModifierKeyCode::RightShift), false),
+        (
+            57448,
+            KeyCode::Modifier(ModifierKeyCode::RightControl),
+            false,
+        ),
+        (57449, KeyCode::Modifier(ModifierKeyCode::RightAlt), false),
+        (57450, KeyCode::Modifier(ModifierKeyCode::RightSuper), false),
+        (57451, KeyCode::Modifier(ModifierKeyCode::RightHyper), false),
+        (57452, KeyCode::Modifier(ModifierKeyCode::RightMeta), false),
+        (
+            57453,
+            KeyCode::Modifier(ModifierKeyCode::IsoLevel3Shift),
+            false,
+        ),
+        (
+            57454,
+            KeyCode::Modifier(ModifierKeyCode::IsoLevel5Shift),
+            false,
+        ),
+    ] {
+        let bytes = format!("\x1B[{code}u");
+        let event = key(bytes.as_bytes());
+        let state = if keypad {
+            KeyEventState::KEYPAD
+        } else {
+            KeyEventState::NONE
+        };
+        assert_eq!(event, kitty(expected, NONE).with_state(state), "{code}");
+    }
+    // Below the table and above it: characters.
+    assert_eq!(key(b"\x1B[57357u").key, KeyCode::Char('\u{E00D}'));
+    assert_eq!(key(b"\x1B[57455u").key, KeyCode::Char('\u{E06F}'));
+}
+
+#[test]
+fn xterm_tilde_key_table() {
+    // xterm's ctlseqs, "PC-Style Function Keys" and VT220's editing keys,
+    // with rxvt's Home and End (7 and 8).
+    for (n, expected) in [
+        (1, KeyCode::Home),
+        (2, KeyCode::Insert),
+        (3, KeyCode::Delete),
+        (4, KeyCode::End),
+        (5, KeyCode::PageUp),
+        (6, KeyCode::PageDown),
+        (7, KeyCode::Home),
+        (8, KeyCode::End),
+        (11, KeyCode::F(1)),
+        (12, KeyCode::F(2)),
+        (13, KeyCode::F(3)),
+        (14, KeyCode::F(4)),
+        (15, KeyCode::F(5)),
+        (17, KeyCode::F(6)),
+        (18, KeyCode::F(7)),
+        (19, KeyCode::F(8)),
+        (20, KeyCode::F(9)),
+        (21, KeyCode::F(10)),
+        (23, KeyCode::F(11)),
+        (24, KeyCode::F(12)),
+        (25, KeyCode::F(13)),
+        (26, KeyCode::F(14)),
+        (28, KeyCode::F(15)),
+        (29, KeyCode::F(16)),
+        (31, KeyCode::F(17)),
+        (32, KeyCode::F(18)),
+        (33, KeyCode::F(19)),
+        (34, KeyCode::F(20)),
+    ] {
+        let bytes = format!("\x1B[{n}~");
+        assert_eq!(key(bytes.as_bytes()), legacy(expected, NONE), "{n}");
+    }
+    // The gaps are not keys.
+    for n in [0, 9, 10, 16, 22, 27, 30, 35] {
+        let bytes = format!("\x1B[{n}~");
+        assert!(matches!(one(bytes.as_bytes()), Event::Unknown(_)), "{n}");
+    }
+}
+
+#[test]
+fn letter_and_ss3_key_tables() {
+    // xterm's ctlseqs: the cursor keys, Home, End, Begin and F1 to F4, in
+    // CSI and SS3 form; and SS3's application keypad.
+    let keypad = KeyEventState::KEYPAD;
+    for (last, expected, state) in [
+        (b'A', KeyCode::Up, KeyEventState::NONE),
+        (b'B', KeyCode::Down, KeyEventState::NONE),
+        (b'C', KeyCode::Right, KeyEventState::NONE),
+        (b'D', KeyCode::Left, KeyEventState::NONE),
+        (b'E', KeyCode::KeypadBegin, keypad),
+        (b'F', KeyCode::End, KeyEventState::NONE),
+        (b'H', KeyCode::Home, KeyEventState::NONE),
+        (b'P', KeyCode::F(1), KeyEventState::NONE),
+        (b'Q', KeyCode::F(2), KeyEventState::NONE),
+        (b'R', KeyCode::F(3), KeyEventState::NONE),
+        (b'S', KeyCode::F(4), KeyEventState::NONE),
+    ] {
+        let expected = legacy(expected, NONE).with_state(state);
+        // `CSI R` alone is a key; with a row and column it is a report.
+        assert_eq!(
+            key(&[0x1B, b'[', last]),
+            expected,
+            "CSI {}",
+            char::from(last)
+        );
+        assert_eq!(
+            key(&[0x1B, b'O', last]),
+            expected,
+            "SS3 {}",
+            char::from(last)
+        );
+    }
+    for (last, expected) in [
+        (b'M', KeyCode::Enter),
+        (b'X', KeyCode::Char('=')),
+        (b'j', KeyCode::Char('*')),
+        (b'k', KeyCode::Char('+')),
+        (b'l', KeyCode::Char(',')),
+        (b'm', KeyCode::Char('-')),
+        (b'n', KeyCode::Char('.')),
+        (b'o', KeyCode::Char('/')),
+        (b'p', KeyCode::Char('0')),
+        (b'q', KeyCode::Char('1')),
+        (b'r', KeyCode::Char('2')),
+        (b's', KeyCode::Char('3')),
+        (b't', KeyCode::Char('4')),
+        (b'u', KeyCode::Char('5')),
+        (b'v', KeyCode::Char('6')),
+        (b'w', KeyCode::Char('7')),
+        (b'x', KeyCode::Char('8')),
+        (b'y', KeyCode::Char('9')),
+    ] {
+        assert_eq!(
+            key(&[0x1B, b'O', last]),
+            legacy(expected, NONE).with_state(keypad),
+            "SS3 {}",
+            char::from(last)
+        );
+    }
+}
+
+#[test]
+fn decrpm_setting_table() {
+    // DECRPM's Ps values, as xterm's ctlseqs list them.
+    for (value, setting) in [
+        (0, ModeSetting::NotRecognized),
+        (1, ModeSetting::Set),
+        (2, ModeSetting::Reset),
+        (3, ModeSetting::PermanentlySet),
+        (4, ModeSetting::PermanentlyReset),
+    ] {
+        let bytes = format!("\x1B[?2026;{value}$y");
+        assert_eq!(
+            report(bytes.as_bytes()),
+            Report::Mode {
+                mode: 2026,
+                private: true,
+                setting
+            },
+            "{value}"
+        );
+    }
+    assert!(matches!(one(b"\x1B[?2026;5$y"), Event::Unknown(_)));
+}
+
+#[test]
 fn kitty_functional_keys() {
     // "Functional key definitions".
     let keypad = KeyEventState::KEYPAD;
