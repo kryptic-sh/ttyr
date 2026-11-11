@@ -243,3 +243,32 @@ fn a_panic_in_suspend_with_leaves_the_terminal_given_back() {
     restore(&mut out).unwrap();
     assert!(out.is_empty());
 }
+
+#[test]
+fn a_later_panic_that_takes_nothing_keeps_what_to_resume() {
+    let _state = terminal_state();
+    let (_term, tty) = pty();
+    raw(&tty);
+    enable(&mut Vec::new(), Mode::BracketedPaste).unwrap();
+    caught_panic();
+    // Nothing is on now, so this one takes nothing.
+    caught_panic();
+    let mut out = Vec::new();
+    assert!(resume_after_panic(&mut out).unwrap());
+    assert_eq!(text(&out), "\x1B[?2004h");
+    assert!(is_raw_mode_enabled());
+    restore(&mut Vec::new()).unwrap();
+}
+
+#[test]
+fn a_later_panic_that_takes_something_replaces_what_to_resume() {
+    let _state = terminal_state();
+    enable(&mut Vec::new(), Mode::BracketedPaste).unwrap();
+    caught_panic();
+    enable(&mut Vec::new(), Mode::FocusChange).unwrap();
+    caught_panic();
+    let mut out = Vec::new();
+    assert!(resume_after_panic(&mut out).unwrap());
+    assert_eq!(text(&out), "\x1B[?1004h");
+    restore(&mut Vec::new()).unwrap();
+}

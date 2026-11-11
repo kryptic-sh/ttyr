@@ -277,8 +277,9 @@ fn take_back(out: &mut impl Write, modes: Vec<Mode>, tty: Option<RawTty>) -> io:
 /// the panic and the resume, which it neither clears nor is cleared by: a
 /// mode turned on again in between with the same value is not written
 /// twice, one with another value takes the value from before the panic, and
-/// raw mode turned on in between stays as it is. A second panic replaces
-/// what the first left to resume with what it took itself.
+/// raw mode turned on in between stays as it is. A later panic that finds
+/// something on (turned on again since) replaces what the first left to
+/// resume with what it took itself; one that finds nothing on leaves it.
 pub fn resume_after_panic(out: &mut impl Write) -> io::Result<bool> {
     let Some((modes, tty)) = taken().take() else {
         return Ok(false);
@@ -341,7 +342,9 @@ fn restore_after_panic() {
     {
         let _ = out.write_all(bytes.as_bytes());
     }
-    if let Some(mut taken) = super::lock_after_panic(&TAKEN) {
-        *taken = took.then_some((modes, tty));
+    // A panic that took nothing (the terminal already restored by one
+    // before) leaves what that one took to resume.
+    if took && let Some(mut taken) = super::lock_after_panic(&TAKEN) {
+        *taken = Some((modes, tty));
     }
 }
