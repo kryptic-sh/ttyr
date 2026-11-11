@@ -23,6 +23,7 @@ pub struct MouseEvent {
 /// What a mouse event is.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, PartialOrd, PartialEq, Eq, Clone, Copy, Hash)]
+#[non_exhaustive]
 pub enum MouseEventKind {
     /// A button went down.
     Down(MouseButton),

@@ -296,6 +296,7 @@ fn single_upper(c: char) -> Option<char> {
 /// A key.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, PartialOrd, PartialEq, Eq, Clone, Copy, Hash)]
+#[non_exhaustive]
 pub enum KeyCode {
     /// Backspace.
     Backspace,
@@ -358,6 +359,7 @@ pub enum KeyCode {
 /// A media key.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, PartialOrd, PartialEq, Eq, Clone, Copy, Hash)]
+#[non_exhaustive]
 pub enum MediaKeyCode {
     /// Play.
     Play,
@@ -390,6 +392,7 @@ pub enum MediaKeyCode {
 /// A modifier key.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, PartialOrd, PartialEq, Eq, Clone, Copy, Hash)]
+#[non_exhaustive]
 pub enum ModifierKeyCode {
     /// Left Shift.
     LeftShift,
@@ -462,6 +465,7 @@ bitflags! {
 /// Whether a key went down, repeated or came up.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, PartialOrd, PartialEq, Eq, Clone, Copy, Hash)]
+#[non_exhaustive]
 pub enum KeyEventKind {
     /// Pressed. Every key from a terminal that does not report kinds.
     Press,
@@ -475,6 +479,7 @@ pub enum KeyEventKind {
 /// could have reported.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, PartialOrd, PartialEq, Eq, Clone, Copy, Hash)]
+#[non_exhaustive]
 pub enum KeyEncoding {
     /// Bytes, C0 controls, `ESC` + key as Alt, and the SS3 and CSI forms of
     /// the cursor, editing and function keys. Ctrl+\[ and Esc, Ctrl+I and Tab,

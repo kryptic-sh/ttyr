@@ -81,6 +81,7 @@ bitflags! {
 /// A mode's setting, as DECRPM reports it.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, PartialOrd, PartialEq, Eq, Clone, Copy, Hash)]
+#[non_exhaustive]
 pub enum ModeSetting {
     /// 0: the terminal does not know the mode.
     NotRecognized,
@@ -97,6 +98,7 @@ pub enum ModeSetting {
 /// A terminal's colour scheme (see [`Report::ColorScheme`]).
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, PartialOrd, PartialEq, Eq, Clone, Copy, Hash)]
+#[non_exhaustive]
 pub enum ColorScheme {
     /// Dark.
     Dark,
@@ -118,6 +120,7 @@ pub struct TerminalColor {
 /// Which of the terminal's colours a [`TerminalColor`] is.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, PartialOrd, PartialEq, Eq, Clone, Copy, Hash)]
+#[non_exhaustive]
 pub enum ColorSlot {
     /// The default foreground (OSC 10).
     Foreground,

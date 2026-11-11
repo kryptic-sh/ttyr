@@ -6,6 +6,14 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Breaking
+
+- `KeyCode`, `MediaKeyCode`, `ModifierKeyCode`, `KeyEventKind`, `KeyEncoding`,
+  `MouseEventKind`, `ModeSetting`, `ColorScheme` and `ColorSlot` are now
+  `#[non_exhaustive]`, as `Event`, `Report` and `MouseButton` already were, so a
+  later key, button or report is not a breaking change. A downstream exhaustive
+  `match` on one of them needs a wildcard arm.
+
 ### Added
 
 - `terminal::resume_after_panic(out)`: takes the terminal back after a panic the

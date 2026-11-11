@@ -171,11 +171,6 @@ first within each group.
   emits), goes through `letter_key` with no state, as does SS3 `ESC O E`.
   Verified by running both forms. Fix: `KeypadBegin` is a keypad key by
   definition, so either always set `KEYPAD` or never.
-- **`MouseButton` is `#[non_exhaustive]` while `KeyCode` and `MouseEventKind`
-  are not**, against the Considered-and-declined entry that keeps a port's
-  exhaustive matches compiling. `Back` and `Forward` already break a crossterm
-  port's `match` on the button; `non_exhaustive` then forces a wildcard arm as
-  well. Either is defensible; record which, and apply it to all three.
 - **crossterm pieces a port will look for and not find, with no note saying
   why:** `terminal::SetSize` (`CSI 8 ; rows ; cols t`), `cursor::position()` and
   `supports_keyboard_enhancement` (blocking, left out on purpose per 01's
@@ -385,7 +380,11 @@ So the next surprise is cheap; each is a decoder choice, not a bug.
   commonest vim mappings), so a legacy terminal's ^H would stop navigating. The
   decoder already reads DEL as Backspace and ^H as Ctrl+H. A consumer that wants
   the alias gets a separate opt-in function, not a change to `normalize_legacy`.
-- **`#[non_exhaustive]` on `KeyCode` and `MouseEventKind`** (raised by hjkl as
-  optional): left off, as in crossterm, so a port's exhaustive matches keep
-  compiling. ttyr is pre-1.0, so a later variant is a minor bump; revisit at
-  1.0.
+- **Exhaustive event enums for crossterm ports** (raised by hjkl as optional,
+  first declined so a port's exhaustive matches kept compiling): decided the
+  other way by the owner (2026-11-11). Every public enum in `ttyr::event` is
+  `#[non_exhaustive]`, as `Event`, `Report` and `MouseButton` already were: ttyr
+  is young and still growing keys, buttons and reports, and each would otherwise
+  be a breaking change. A port adds a wildcard arm once. `ClearType`,
+  `MouseTracking`, `SetCursorStyle`, `Color` and `Attribute` outside the event
+  module were left exhaustive.
