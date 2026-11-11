@@ -33,6 +33,10 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- Windows: a mouse mode or `Mode::VirtualTerminalInput` turned on before raw
+  mode is off after `restore`, the panic hook and `suspend_with`. Raw mode's
+  snapshot of the input mode held their bits on and put them back over the
+  modes' own restore; it now leaves those bits as the modes put them.
 - Windows: a console that fails to take a mode's input bits (the console gone,
   `CONIN$` not openable) no longer stops `restore`: the off sequences are still
   written, raw mode still put back and the record cleared, and the first error

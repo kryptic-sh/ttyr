@@ -210,3 +210,28 @@ fn a_console_that_fails_still_writes_the_off_sequences_on_restore() {
     restore(&mut out).unwrap();
     assert!(out.is_empty());
 }
+
+#[test]
+fn modes_turned_on_before_raw_mode_are_off_after_restore() {
+    let _console = console();
+    let before = modes();
+    let mut out = Vec::new();
+    // The other order from crossterm's: the modes, then raw mode, whose
+    // snapshot then has their bits on.
+    enable(&mut out, NORMAL).unwrap();
+    enable(&mut out, Mode::VirtualTerminalInput).unwrap();
+    enable_raw_mode().unwrap();
+    assert_ne!(modes().0 & MODE_BITS, before.0 & MODE_BITS);
+    restore(&mut out).unwrap();
+    assert!(!is_raw_mode_enabled());
+    assert_eq!(modes().0 & MODE_BITS, before.0 & MODE_BITS);
+    // And from the panic hook.
+    enable(&mut out, NORMAL).unwrap();
+    enable(&mut out, Mode::VirtualTerminalInput).unwrap();
+    enable_raw_mode().unwrap();
+    restore_on_panic();
+    let panicked = std::panic::catch_unwind(|| panic!("on purpose"));
+    assert!(panicked.is_err());
+    assert_eq!(modes().0 & MODE_BITS, before.0 & MODE_BITS);
+    restore(&mut out).unwrap();
+}

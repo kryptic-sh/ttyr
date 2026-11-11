@@ -175,6 +175,21 @@ static VT_INPUT: Saved = Saved::new();
 /// The input mode bits the mouse changes.
 const MOUSE_BITS: CONSOLE_MODE = ENABLE_MOUSE_INPUT | ENABLE_QUICK_EDIT_MODE;
 
+/// The input mode bits the guard's modes own, which they put back
+/// themselves: raw mode's snapshot may hold them as a mode turned on
+/// before it left them.
+const MODE_BITS: CONSOLE_MODE = MOUSE_BITS | ENABLE_VIRTUAL_TERMINAL_INPUT;
+
+/// The input mode raw mode puts back: its snapshot from before, with the
+/// modes' bits as they are now, so that a mode turned on before raw mode
+/// and off since stays off. (Quick Edit's bit, which changes only with
+/// `ENABLE_EXTENDED_FLAGS`, is the console's own either way.) A console
+/// whose mode cannot be read gets the snapshot whole.
+fn input_to_put_back(console: &Console, snapshot: CONSOLE_MODE) -> CONSOLE_MODE {
+    let now = console_mode(console.input.as_handle()).unwrap_or(snapshot);
+    (snapshot & !MODE_BITS) | (now & MODE_BITS)
+}
+
 /// Puts back the input mode bits the modes changed, for a panic hook.
 pub fn put_back_modes_after_panic() {
     MOUSE.put_back_after_panic(MOUSE_BITS);
@@ -291,7 +306,8 @@ pub fn disable_raw_mode() -> io::Result<()> {
 pub fn take_raw() -> io::Result<Option<Console>> {
     let mut raw = raw_state();
     if let Some((console, input, output)) = raw.as_ref() {
-        set_console_mode(console.input.as_handle(), *input)?;
+        let input = input_to_put_back(console, *input);
+        set_console_mode(console.input.as_handle(), input)?;
         set_console_mode(console.output.as_handle(), *output)?;
     }
     Ok(raw.take().map(|(console, _, _)| console))
@@ -302,6 +318,7 @@ pub fn take_raw() -> io::Result<Option<Console>> {
 pub fn take_raw_after_panic() -> Option<Console> {
     let (console, input, output) = super::lock_after_panic(&RAW)?.take()?;
     // A panic hook has nowhere to report a failure; the modes stay raw.
+    let input = input_to_put_back(&console, input);
     let _ = set_console_mode(console.input.as_handle(), input);
     let _ = set_console_mode(console.output.as_handle(), output);
     Some(console)

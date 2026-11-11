@@ -34,22 +34,6 @@ first within each group.
   when nothing has arrived for some time (no new API, but a paste a slow ConPTY
   delivers in pieces would then be cut in two). crossterm's parser waits the
   same way, as recalled, not checked.
-- **Windows: a console mode turned on before raw mode is left on by `restore`.**
-  `Saved::apply` (`src/terminal/windows.rs`) saves the bits a mode changes when
-  it goes on and puts them back when it goes off; `release` does that first and
-  then `take_raw` writes back the whole input mode from the
-  `enable_raw_mode_with` snapshot. If `enable(Mode::Mouse { .. })` or
-  `enable(Mode::VirtualTerminalInput)` ran before `enable_raw_mode`, the
-  snapshot has `ENABLE_MOUSE_INPUT` on, `ENABLE_QUICK_EDIT_MODE` off and
-  `ENABLE_VIRTUAL_TERMINAL_INPUT` on, so after `restore`, after the panic hook,
-  and in the console `suspend_with` gives back, they stay that way; on the way
-  back from `suspend_with` the mode's saved bits are then the leaked ones, so it
-  compounds. Inferred from reading; the Windows tests
-  (`src/terminal/guard/tests/windows.rs`) turn raw mode on first, or turn the
-  modes on without raw mode. The crossterm order (raw mode first) is safe. Fix:
-  mask the `Saved` statics' bits out of raw mode's snapshot, or restore raw mode
-  before the modes; and a test that enables the mouse before raw mode and checks
-  the bits after `restore`.
 - **A DA2 or DA1 answer with a value above 65535 decodes as `Event::Unknown`.**
   `flat` (`src/event/decoder/csi.rs`) narrows each parameter to `u16`; a
   terminal whose DA2 version field is larger loses the whole report (foot, for
