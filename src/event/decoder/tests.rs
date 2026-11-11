@@ -602,6 +602,12 @@ fn a_binding_and_the_event_it_means_are_one_chord() {
         (KeyChord::new(KeyCode::Char('a'), NONE), b"\x1B[97;66;97u"),
         (KeyChord::new(KeyCode::Char('a'), CTRL), b"\x1B[97;69u"),
         (KeyChord::new(KeyCode::Up, CTRL), b"\x1B[1;5A"),
+        // Shift+ß typing ẞ, whose lower case upper-cases to "SS".
+        (
+            KeyChord::new(KeyCode::Char('ẞ'), NONE),
+            "\x1B[223:7838;2u".as_bytes(),
+        ),
+        (KeyChord::new(KeyCode::Char('ẞ'), NONE), "ẞ".as_bytes()),
     ] {
         assert_eq!(key(bytes).chord(), written, "{bytes:?}");
     }

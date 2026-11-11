@@ -321,11 +321,18 @@ impl KeyChord {
     /// `new(Char('Q'), NONE)`, `new(Char('Q'), SHIFT)` and
     /// `new(Char('q'), SHIFT)` are one chord, Shift+q's. Ctrl+Shift+h is
     /// `H` with Ctrl, written either way.
+    ///
+    /// Only a letter whose lower case upper-cases back to it is read so:
+    /// `ẞ`, whose lower case `ß` upper-cases to `SS`, stays itself, as a
+    /// terminal reports it. Shift on any other character is kept as written,
+    /// so `new(Char('!'), SHIFT)` is not the `!` a terminal reports, which
+    /// carries no Shift: write the character typed, `new(Char('!'), NONE)`.
     pub fn new(key: KeyCode, modifiers: KeyModifiers) -> Self {
         let KeyCode::Char(c) = key else {
             return Self { key, modifiers };
         };
-        let event = match single_lower(c) {
+        let lower = single_lower(c).filter(|&lower| single_upper(lower) == Some(c));
+        let event = match lower {
             Some(lower) => KeyEvent::new(KeyCode::Char(lower), modifiers | KeyModifiers::SHIFT),
             None => KeyEvent::new(key, modifiers),
         };
