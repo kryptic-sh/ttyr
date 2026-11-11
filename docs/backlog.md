@@ -72,14 +72,6 @@ first within each group.
   test process's console (`FreeConsole`) and allocate a new one, which no test
   did before.
 
-### Code quality
-
-- **The reader tests are duplicated between `src/reader/tests.rs` and
-  `src/reader/windows/tests.rs`**: most tests share a name and a body and differ
-  only in how the terminal is driven (a pty write, an injected record). A fix to
-  one has to be made twice. A shared body over a small "type these bytes" helper
-  per platform would keep them one.
-
 ## Left from phase 02 (events and decoder)
 
 - **No real-terminal byte captures.** Phase 02 planned fixtures captured from

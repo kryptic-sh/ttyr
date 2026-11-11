@@ -1,16 +1,18 @@
 //! The reader end to end over a pty.
 
+use std::fs::File;
 use std::io::Write;
+use std::os::fd::OwnedFd;
 use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use rustix::termios::{Winsize, tcsetwinsize};
 
 use super::Reader;
+use super::shared_tests::{LONG, Terminal, legacy as key, shared_tests};
 use crate::event::{
-    Event, KeyCode, KeyEncoding, KeyEvent, KeyModifiers, KeyboardEnhancementFlags, ModeSetting,
-    Report,
+    Event, KeyCode, KeyEncoding, KeyEvent, KeyModifiers, KeyboardEnhancementFlags, Report,
 };
 use crate::test_pty::raw_pty as pty;
 
@@ -18,16 +20,45 @@ use crate::test_pty::raw_pty as pty;
 /// so the tests take turns.
 static SERIAL: Mutex<()> = Mutex::new(());
 
-/// Longer than any wait a test expects to end, so a hang fails instead.
-const LONG: Duration = Duration::from_secs(5);
-
 fn serial() -> MutexGuard<'static, ()> {
     SERIAL.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
-fn key(code: KeyCode) -> Event {
-    Event::Key(KeyEvent::new(code, KeyModifiers::NONE).with_encoding(KeyEncoding::Legacy))
+/// A pty in raw mode, the test's turn held while it lives.
+struct Pty {
+    term: File,
+    tty: Option<OwnedFd>,
+    _serial: MutexGuard<'static, ()>,
 }
+
+impl Pty {
+    fn new() -> Self {
+        let serial = serial();
+        let (term, tty) = pty();
+        Self {
+            term,
+            tty: Some(tty),
+            _serial: serial,
+        }
+    }
+}
+
+impl Terminal for Pty {
+    fn reader(&mut self) -> Reader {
+        Reader::from_fd(self.tty.take().unwrap()).unwrap()
+    }
+
+    fn type_text(&mut self, text: &str) {
+        self.term.write_all(text.as_bytes()).unwrap();
+    }
+
+    fn typist(&self) -> impl FnMut(&str) + Send + 'static {
+        let mut term = self.term.try_clone().unwrap();
+        move |text| term.write_all(text.as_bytes()).unwrap()
+    }
+}
+
+shared_tests!(Pty::new());
 
 #[test]
 fn reads_keys_as_they_arrive() {
@@ -38,94 +69,6 @@ fn reads_keys_as_they_arrive() {
     assert_eq!(reader.read().unwrap(), key(KeyCode::Up));
     let ctrl_a = KeyEvent::new(KeyCode::Char('a'), KeyModifiers::CONTROL);
     assert_eq!(reader.read().unwrap(), Event::Key(ctrl_a));
-}
-
-#[test]
-fn a_timed_out_poll_returns_false_promptly() {
-    let _serial = serial();
-    let (_term, tty) = pty();
-    let mut reader = Reader::from_fd(tty).unwrap();
-    let wait = Duration::from_millis(50);
-    let start = Instant::now();
-    assert!(!reader.poll(wait).unwrap());
-    let took = start.elapsed();
-    assert!(took >= wait && took < LONG, "{took:?}");
-    assert!(!reader.poll(Duration::ZERO).unwrap());
-}
-
-#[test]
-fn a_zero_poll_reports_an_event_already_decoded() {
-    let _serial = serial();
-    let (mut term, tty) = pty();
-    let mut reader = Reader::from_fd(tty).unwrap();
-    term.write_all(b"ab").unwrap();
-    assert!(reader.poll(LONG).unwrap());
-    // Both keys arrived in one read: the second is ready without a wait.
-    assert_eq!(reader.read().unwrap(), key(KeyCode::Char('a')));
-    assert!(reader.poll(Duration::ZERO).unwrap());
-    assert_eq!(reader.read().unwrap(), key(KeyCode::Char('b')));
-}
-
-#[test]
-fn with_no_escape_timeout_a_lone_escape_is_read_at_once() {
-    let _serial = serial();
-    let (mut term, tty) = pty();
-    let mut reader = Reader::from_fd(tty).unwrap();
-    term.write_all(b"\x1B").unwrap();
-    assert!(reader.poll(LONG).unwrap());
-    assert_eq!(reader.read().unwrap(), key(KeyCode::Esc));
-}
-
-#[test]
-fn an_escape_timeout_keeps_a_split_sequence_whole() {
-    let _serial = serial();
-    let (mut term, tty) = pty();
-    let mut reader = Reader::from_fd(tty).unwrap();
-    reader.set_escape_timeout(Some(LONG));
-    term.write_all(b"\x1B").unwrap();
-    // The ESC arrives and is held, not read as Escape.
-    assert!(!reader.poll(Duration::from_millis(100)).unwrap());
-    assert!(!reader.poll(Duration::ZERO).unwrap());
-    term.write_all(b"[A").unwrap();
-    assert_eq!(reader.read().unwrap(), key(KeyCode::Up));
-}
-
-#[test]
-fn an_escape_timeout_reads_a_lone_escape_once_it_passes() {
-    let _serial = serial();
-    let (mut term, tty) = pty();
-    let mut reader = Reader::from_fd(tty).unwrap();
-    let timeout = Duration::from_millis(100);
-    reader.set_escape_timeout(Some(timeout));
-    let start = Instant::now();
-    term.write_all(b"\x1B").unwrap();
-    assert!(reader.poll(LONG).unwrap());
-    assert!(start.elapsed() >= timeout);
-    assert_eq!(reader.read().unwrap(), key(KeyCode::Esc));
-}
-
-#[test]
-fn an_escape_timeout_too_long_to_reach_never_flushes() {
-    let _serial = serial();
-    let (mut term, tty) = pty();
-    let mut reader = Reader::from_fd(tty).unwrap();
-    reader.set_escape_timeout(Some(Duration::MAX));
-    term.write_all(b"\x1B").unwrap();
-    assert!(!reader.poll(Duration::from_millis(100)).unwrap());
-    term.write_all(b"[A").unwrap();
-    assert_eq!(reader.read().unwrap(), key(KeyCode::Up));
-}
-
-#[test]
-fn a_paste_waits_past_a_flush_for_its_end() {
-    let _serial = serial();
-    let (mut term, tty) = pty();
-    let mut reader = Reader::from_fd(tty).unwrap();
-    term.write_all(b"\x1B[200~half").unwrap();
-    // The flush leaves the paste held, and the wait does not spin on it.
-    assert!(!reader.poll(Duration::from_millis(100)).unwrap());
-    term.write_all(b" and half\x1B[201~").unwrap();
-    assert_eq!(reader.read().unwrap(), Event::Paste("half and half".into()));
 }
 
 #[test]
@@ -166,40 +109,6 @@ fn sigwinch_with_input_keeps_both() {
     assert_eq!(events.len(), 2, "{events:?}");
     assert!(events.contains(&key(KeyCode::Char('x'))));
     assert!(events.iter().any(|e| matches!(e, Event::Resize(..))));
-}
-
-#[test]
-fn a_waker_wakes_a_wait_from_another_thread() {
-    let _serial = serial();
-    let (_term, tty) = pty();
-    let mut reader = Reader::from_fd(tty).unwrap();
-    let waker = reader.waker();
-    let waking = thread::spawn(move || {
-        thread::sleep(Duration::from_millis(50));
-        waker.wake().unwrap();
-        waker
-    });
-    let start = Instant::now();
-    assert_eq!(reader.read().unwrap(), Event::Wake);
-    assert!(start.elapsed() < LONG);
-    let waker = waking.join().unwrap();
-    assert!(!reader.poll(Duration::ZERO).unwrap());
-    // Wakes before the reader next waits are one event.
-    waker.wake().unwrap();
-    waker.wake().unwrap();
-    assert!(reader.poll(Duration::ZERO).unwrap());
-    assert_eq!(reader.read().unwrap(), Event::Wake);
-    assert!(!reader.poll(Duration::ZERO).unwrap());
-}
-
-#[test]
-fn a_waker_outliving_its_reader_does_nothing() {
-    let _serial = serial();
-    let (_term, tty) = pty();
-    let reader = Reader::from_fd(tty).unwrap();
-    let waker = reader.waker();
-    drop(reader);
-    waker.wake().unwrap();
 }
 
 #[test]
@@ -304,85 +213,4 @@ fn collect_answers_keeps_the_keys_typed_meanwhile_and_stops_at_da1() {
     assert_eq!(answers.reports().count(), 3);
     // What came after DA1 is left to read.
     assert_eq!(keys(&rest), [key(KeyCode::Char('z'))]);
-}
-
-#[test]
-fn collect_answers_gives_up_at_the_timeout() {
-    let _serial = serial();
-    let (mut term, tty) = pty();
-    let mut reader = Reader::from_fd(tty).unwrap();
-    term.write_all(b"\x1B[?2026;2$yq").unwrap();
-    let timeout = Duration::from_millis(100);
-    let start = Instant::now();
-    let answers = reader.collect_answers(timeout).unwrap();
-    assert!(start.elapsed() >= timeout && start.elapsed() < LONG);
-    assert!(!answers.complete);
-    let mode = Report::Mode {
-        mode: 2026,
-        private: true,
-        setting: ModeSetting::Reset,
-    };
-    assert_eq!(answers.reports().collect::<Vec<_>>(), [&mode]);
-    assert_eq!(
-        answers.events,
-        [Event::Report(mode.clone()), key(KeyCode::Char('q'))]
-    );
-}
-
-#[test]
-fn collect_answers_returns_a_wake_that_comes_while_it_waits() {
-    let _serial = serial();
-    let (mut term, tty) = pty();
-    let mut reader = Reader::from_fd(tty).unwrap();
-    let waker = reader.waker();
-    let answering = thread::spawn(move || {
-        thread::sleep(Duration::from_millis(50));
-        waker.wake().unwrap();
-        thread::sleep(Duration::from_millis(50));
-        term.write_all(b"\x1B[?62c").unwrap();
-        term
-    });
-    let answers = reader.collect_answers(LONG).unwrap();
-    let _term = answering.join().unwrap();
-    // The wake did not end the wait: DA1's answer came, last.
-    assert!(answers.complete);
-    let da1 = Event::Report(Report::PrimaryDeviceAttributes(vec![62]));
-    assert_eq!(answers.events.last(), Some(&da1));
-    // The wake came first, unless a loaded machine delayed the reader past
-    // both, when the one wait reads the answer first and leaves the wake.
-    if answers.events.len() == 2 {
-        assert_eq!(answers.events[0], Event::Wake);
-    } else {
-        assert_eq!(answers.events, [da1]);
-        assert_eq!(reader.read().unwrap(), Event::Wake);
-    }
-}
-
-#[test]
-fn wakes_that_fill_the_pipe_are_one_event() {
-    let _serial = serial();
-    let (_term, tty) = pty();
-    let mut reader = Reader::from_fd(tty).unwrap();
-    let waker = reader.waker();
-    // Far more than the pipe holds: a full pipe already holds a wake.
-    for _ in 0..100_000 {
-        waker.wake().unwrap();
-    }
-    assert_eq!(reader.read().unwrap(), Event::Wake);
-    assert!(!reader.poll(Duration::ZERO).unwrap());
-}
-
-#[test]
-fn the_kitty_protocol_decides_what_bit_8_is() {
-    let _serial = serial();
-    let (mut term, tty) = pty();
-    let mut reader = Reader::from_fd(tty).unwrap();
-    let up = |modifiers| {
-        Event::Key(KeyEvent::new(KeyCode::Up, modifiers).with_encoding(KeyEncoding::Legacy))
-    };
-    term.write_all(b"\x1B[1;9A").unwrap();
-    assert_eq!(reader.read().unwrap(), up(KeyModifiers::META));
-    reader.set_kitty_keyboard(true);
-    term.write_all(b"\x1B[1;9A").unwrap();
-    assert_eq!(reader.read().unwrap(), up(KeyModifiers::SUPER));
 }

@@ -10,6 +10,8 @@ use std::time::{Duration, Instant};
 
 use crate::event::{Decoder, Event, Report};
 
+#[cfg(test)]
+mod shared_tests;
 #[cfg(all(test, unix))]
 mod tests;
 #[cfg(unix)]
