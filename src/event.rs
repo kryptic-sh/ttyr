@@ -8,8 +8,8 @@ mod report;
 
 pub use decoder::Decoder;
 pub use key::{
-    KeyCode, KeyEncoding, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers, MediaKeyCode,
-    ModifierKeyCode,
+    KeyChord, KeyCode, KeyEncoding, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers,
+    MediaKeyCode, ModifierKeyCode,
 };
 pub use mouse::{MouseButton, MouseEvent, MouseEventKind};
 pub use report::{

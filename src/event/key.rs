@@ -13,6 +13,13 @@ use bitflags::bitflags;
 ///
 /// Built with [`KeyEvent::new`] and the `with_*` methods, so a later field is
 /// not a breaking change. `KeyEvent { key, modifiers, .. }` still matches.
+///
+/// `==` and `Hash` are exact: every field counts, the encoding included, so
+/// Ctrl+q from a legacy terminal is not equal to `KeyEvent::new(Char('q'),
+/// CONTROL)`, and the extras kitty's flags 4 and 16 add make the same key
+/// unequal too. To compare keys, or to key a keymap, use
+/// [`KeyEvent::chord`], which is the same for the same keypress from every
+/// encoding.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[non_exhaustive]
@@ -42,6 +49,10 @@ pub struct KeyEvent {
 impl KeyEvent {
     /// A press of `key` with `modifiers`, as an unambiguous encoding reports it
     /// ([`KeyEncoding::Kitty`]): a hand-built event is taken at face value.
+    ///
+    /// Comparing it with `==` to a decoded event compares every field, the
+    /// encoding included, so it equals few of them; compare
+    /// [`chord`](Self::chord)s, or build a [`KeyChord`], instead.
     pub const fn new(key: KeyCode, modifiers: KeyModifiers) -> Self {
         Self {
             key,
@@ -120,6 +131,32 @@ impl KeyEvent {
     /// modifiers as reported.
     pub fn logical_modifiers(&self) -> KeyModifiers {
         self.logical().map_or(self.modifiers, |(_, mods)| mods)
+    }
+
+    /// The key and modifiers that were meant, for keymaps and comparisons:
+    /// the same keypress gives the same chord from every encoding.
+    ///
+    /// The key is [`logical_char`](Self::logical_char) as a
+    /// [`KeyCode::Char`] where there is one, else `key`; the modifiers are
+    /// [`logical_modifiers`](Self::logical_modifiers). The kind, the state
+    /// (lock keys and keypad), the encoding, `shifted`, `base_layout` and
+    /// `text` are left out, so a press, a repeat and a release are one chord.
+    ///
+    /// Caps Lock counts as `logical_char` counts it: with no Ctrl, Alt,
+    /// Super, Hyper or Meta held it makes `a` the chord `A`, as Shift does,
+    /// because a legacy terminal sends Caps Lock's `A` as the same byte as
+    /// Shift's and the chords could not agree otherwise; with one held,
+    /// Ctrl+a stays Ctrl+a. Shift with a key whose shifted character the
+    /// terminal did not report (`1` without kitty flag 4) stays a modifier:
+    /// `1` with Shift, where a terminal that reports `!` gives `!`.
+    pub fn chord(&self) -> KeyChord {
+        match self.logical() {
+            Some((c, modifiers)) => KeyChord::new(KeyCode::Char(c), modifiers),
+            None => KeyChord {
+                key: self.key,
+                modifiers: self.modifiers,
+            },
+        }
     }
 
     fn logical(&self) -> Option<(char, KeyModifiers)> {
@@ -201,6 +238,52 @@ fn single_char(s: &str) -> Option<char> {
     let mut chars = s.chars();
     let c = chars.next()?;
     chars.next().is_none().then_some(c)
+}
+
+/// `c`'s lower case, where `c` is upper case and its lower case is one
+/// character.
+pub(super) fn single_lower(c: char) -> Option<char> {
+    if !c.is_uppercase() {
+        return None;
+    }
+    let mut lower = c.to_lowercase();
+    let l = lower.next()?;
+    (lower.next().is_none() && l != c).then_some(l)
+}
+
+/// A key and the modifiers held with it, without the rest of a
+/// [`KeyEvent`]: what a keymap binds and looks up. [`KeyEvent::chord`] makes
+/// one from an event; [`KeyChord::new`] makes one for a binding.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct KeyChord {
+    /// The key: the character that was meant, for a character key.
+    pub key: KeyCode,
+    /// The modifiers, without Shift where the character carries it.
+    pub modifiers: KeyModifiers,
+}
+
+impl KeyChord {
+    /// The chord of `key` with `modifiers`, read as [`KeyEvent::chord`]
+    /// reads an event, so a binding matches the events it means however it
+    /// is written: an upper-case letter is that letter typed with Shift, so
+    /// `new(Char('Q'), NONE)`, `new(Char('Q'), SHIFT)` and
+    /// `new(Char('q'), SHIFT)` are one chord, Shift+q's. Ctrl+Shift+h is
+    /// `H` with Ctrl, written either way.
+    pub fn new(key: KeyCode, modifiers: KeyModifiers) -> Self {
+        let KeyCode::Char(c) = key else {
+            return Self { key, modifiers };
+        };
+        let event = match single_lower(c) {
+            Some(lower) => KeyEvent::new(KeyCode::Char(lower), modifiers | KeyModifiers::SHIFT),
+            None => KeyEvent::new(key, modifiers),
+        };
+        let (c, modifiers) = event.logical().unwrap_or((c, modifiers));
+        Self {
+            key: KeyCode::Char(c),
+            modifiers,
+        }
+    }
 }
 
 /// `c`'s upper case, where it is one character and differs from `c`.

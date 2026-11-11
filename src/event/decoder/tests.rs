@@ -1,8 +1,8 @@
 use super::Decoder;
 use crate::event::{
-    ColorScheme, ColorSlot, Event, KeyCode, KeyEncoding, KeyEvent, KeyEventKind, KeyEventState,
-    KeyModifiers, KeyboardEnhancementFlags, MediaKeyCode, ModeSetting, ModifierKeyCode,
-    MouseButton, MouseEvent, MouseEventKind, Report, TerminalColor,
+    ColorScheme, ColorSlot, Event, KeyChord, KeyCode, KeyEncoding, KeyEvent, KeyEventKind,
+    KeyEventState, KeyModifiers, KeyboardEnhancementFlags, MediaKeyCode, ModeSetting,
+    ModifierKeyCode, MouseButton, MouseEvent, MouseEventKind, Report, TerminalColor,
 };
 
 const NONE: KeyModifiers = KeyModifiers::NONE;
@@ -466,6 +466,109 @@ fn kitty_associated_text() {
         assert_eq!(key(bytes), kitty(KeyCode::Char('a'), NONE), "{bytes:?}");
     }
     assert_eq!(key(b"\x1B[97;;97:u").text.as_deref(), Some("a"));
+}
+
+#[test]
+fn the_same_keypress_is_one_chord_from_every_encoding() {
+    use std::collections::HashMap;
+    let chord = |key, modifiers| KeyChord::new(key, modifiers);
+    let shift_a = chord(KeyCode::Char('A'), NONE);
+    let caps_a = shift_a;
+    let ctrl_shift_h = chord(KeyCode::Char('H'), CTRL);
+    let ctrl_up = chord(KeyCode::Up, CTRL);
+    let keymap = HashMap::from([
+        (shift_a, "shift a"),
+        (ctrl_shift_h, "ctrl shift h"),
+        (ctrl_up, "ctrl up"),
+    ]);
+    for (expected, forms) in [
+        (
+            shift_a,
+            &[
+                &b"A"[..],
+                b"\x1B[27;2;65~",
+                b"\x1B[97;2u",
+                // Flags 4 and 16, with Num Lock in the state.
+                b"\x1B[97:65;130;65u",
+                b"\x1B[65;30;65;1;48;1_",
+            ][..],
+        ),
+        (
+            caps_a,
+            &[
+                b"\x1B[97;65u",
+                b"\x1B[97:65;65;65u",
+                b"\x1B[65;30;65;1;128;1_",
+            ],
+        ),
+        (
+            ctrl_shift_h,
+            &[
+                b"\x1B[27;6;72~",
+                b"\x1B[104;6u",
+                b"\x1B[104:72;6u",
+                b"\x1B[72;35;8;1;24;1_",
+            ],
+        ),
+        (
+            ctrl_up,
+            &[
+                b"\x1B[1;5A",
+                b"\x1B[1;5:1A",
+                b"\x1B[1;69A",
+                b"\x1B[38;72;0;1;8;1_",
+            ],
+        ),
+    ] {
+        for &bytes in forms {
+            let event = key(bytes);
+            assert_eq!(event.chord(), expected, "{bytes:?}: {event:?}");
+            assert_eq!(
+                keymap.get(&event.chord()),
+                keymap.get(&expected),
+                "{bytes:?}"
+            );
+        }
+    }
+    // Ctrl+Shift+h as the decoder reads it, with the shifted key reported.
+    let event = KeyEvent::new(KeyCode::Char('h'), CTRL | SHIFT).with_shifted(Some('H'));
+    assert_eq!(event.chord(), ctrl_shift_h);
+    assert_eq!(event.chord().key, KeyCode::Char('H'));
+    assert_eq!(event.chord().modifiers, CTRL);
+}
+
+#[test]
+fn a_press_repeat_and_release_are_one_chord() {
+    let chords: Vec<_> = [&b"\x1B[97;3:1u"[..], b"\x1B[97;3:2u", b"\x1B[97;3:3u"]
+        .iter()
+        .map(|bytes| key(bytes).chord())
+        .collect();
+    assert_eq!(chords, [KeyChord::new(KeyCode::Char('a'), ALT); 3]);
+}
+
+#[test]
+fn a_chord_is_written_either_way() {
+    for (key, modifiers) in [
+        (KeyCode::Char('Q'), NONE),
+        (KeyCode::Char('Q'), SHIFT),
+        (KeyCode::Char('q'), SHIFT),
+    ] {
+        let chord = KeyChord::new(key, modifiers);
+        assert_eq!((chord.key, chord.modifiers), (KeyCode::Char('Q'), NONE));
+    }
+    assert_eq!(
+        KeyChord::new(KeyCode::Char('h'), CTRL | SHIFT),
+        KeyChord::new(KeyCode::Char('H'), CTRL)
+    );
+    // Shift with a key whose shifted character is not known stays.
+    let shift_1 = KeyChord::new(KeyCode::Char('1'), SHIFT);
+    assert_eq!(
+        (shift_1.key, shift_1.modifiers),
+        (KeyCode::Char('1'), SHIFT)
+    );
+    // Caps Lock with Ctrl does not change the letter.
+    let event = key(b"\x1B[97;69u");
+    assert_eq!(event.chord(), KeyChord::new(KeyCode::Char('a'), CTRL));
 }
 
 #[test]

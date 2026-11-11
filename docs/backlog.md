@@ -149,20 +149,6 @@ first within each group.
 
 ### Docs and API
 
-- **`KeyEvent`'s `PartialEq` and `Hash` include `encoding`, `shifted`,
-  `base_layout` and `text`, so comparing whole events is a porting trap.**
-  crossterm code writes
-  `if key == KeyEvent::new(KeyCode::Char('q'), KeyModifiers::CONTROL)` and keys
-  `HashMap<KeyEvent, Action>` keymaps. `KeyEvent::new` sets `encoding: Kitty`
-  (`src/event/key.rs`), so a legacy terminal's Ctrl+q (encoding `Legacy`) never
-  equals the hand-built event, and under kitty flags 4 or 16 `shifted` and
-  `text` make the same key unequal too. ttyr's own tests add
-  `.with_encoding(KeyEncoding::Legacy)` to every expected legacy event for this
-  reason. Verified by reading the derive and the tests. Options: say so on
-  `KeyEvent` and `KeyEvent::new`; add a comparison that looks only at `key`,
-  `modifiers`, `kind` and `state` (or at `logical_char`); or hand-write
-  `PartialEq`/`Hash` without `encoding`. A design call to make with hjkl's and
-  tmxr's keymaps before phase 08.
 - **`TtyrBackend::size` and `window_size` always open `/dev/tty`**
   (`src/backend.rs` calls `terminal::size`, which calls `open_tty`), so a
   program with no controlling terminal, the `setsid` launcher case

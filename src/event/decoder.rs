@@ -6,6 +6,7 @@ mod strings;
 mod tests;
 
 use super::console::{ConsoleKeys, KeyRecord};
+use super::key::single_lower;
 use super::{Event, KeyCode, KeyEncoding, KeyEvent, KeyEventState, KeyModifiers, Report};
 
 const ESC: u8 = 0x1B;
@@ -292,17 +293,6 @@ fn char_key(c: char, modifiers: KeyModifiers, encoding: KeyEncoding) -> KeyEvent
         None => KeyEvent::new(KeyCode::Char(c), modifiers),
     };
     event.with_encoding(encoding)
-}
-
-/// `c`'s lower case, where `c` is upper case and its lower case is one
-/// character.
-fn single_lower(c: char) -> Option<char> {
-    if !c.is_uppercase() {
-        return None;
-    }
-    let mut lower = c.to_lowercase();
-    let l = lower.next()?;
-    (lower.next().is_none() && l != c).then_some(l)
 }
 
 /// A UTF-8 character, or the bytes that are not one.

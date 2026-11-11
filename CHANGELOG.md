@@ -6,6 +6,17 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- `KeyChord` and `KeyEvent::chord()`: the key and modifiers that were meant, the
+  same for the same keypress from every encoding (legacy, xterm, kitty with any
+  flags, the Windows console), for keymaps and comparisons. A character key is
+  its `logical_char` with `logical_modifiers`; kind, lock state, encoding,
+  `shifted`, `base_layout` and `text` are left out. `KeyChord::new` reads a
+  binding the same way, so `new(Char('Q'), NONE)`, `new(Char('Q'), SHIFT)` and
+  `new(Char('q'), SHIFT)` are one chord. `KeyEvent`'s `==` and `Hash` stay
+  exact, encoding included, and its docs now say so.
+
 ### Fixed
 
 - Windows: Ctrl with an OEM key the console gives no character for (Ctrl+;,
