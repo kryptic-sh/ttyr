@@ -7,17 +7,11 @@ What is not done yet, and why.
 - **Consumers not surveyed**: gpur, pikr, sqeel, hodl and the other ratatui
   apps' use of crossterm (01's Consumers lists tmxr's and hjkl's).
 
-## Review findings (0.1.0)
+## Left from the 0.1.0 review
 
-A review of the whole crate as released (2026-11-11), on Linux: every source and
-test file read, `cargo test --all-features` run (115 tests and 1 doctest
-passed), `cargo llvm-cov --all-features` run (92.68% of lines, 90.63% of
-regions; the lowest files `terminal/unix.rs` at 75.34% of lines, `backend.rs`
-85.14%, `terminal/guard.rs` 86.92%, `event/console.rs` 87.97%, `reader/unix.rs`
-89.01%), and suspected bugs tried in a scratch program against the crate.
-Windows code was read, not run. Each entry says whether it was verified by
-running something or inferred from reading. Entries are ordered most severe
-first within each group.
+The 0.1.0 review's findings (2026-11-11) were fixed or decided in the commits
+after it; what remains is below: two bugs that need the owner's call, one held
+as a decision, and the coverage that is still missing or cannot be tested.
 
 ### Bugs
 
@@ -68,11 +62,11 @@ first within each group.
   A test that raises a signal and hopes would pass whether or not the arm ran,
   so none was written. A full wake pipe (`WouldBlock` in `WakeHandle::wake`) is
   tested (`wakes_that_fill_the_pipe_are_one_event`).
-- **The Windows tests added since 0.1.0 have not run**: they compile for
-  `x86_64-pc-windows-gnu` here and run only in CI. In particular
-  `a_console_that_fails_*` in `src/terminal/guard/tests/windows.rs` free the
-  test process's console (`FreeConsole`) and allocate a new one, which no test
-  did before.
+- **The Windows tests run only in CI**: they compile for `x86_64-pc-windows-gnu`
+  locally. Those added after the 0.1.0 review passed on windows-latest (run
+  42962300827); the standard-handle restore in `without_a_console`
+  (`src/terminal/guard/tests/windows.rs`), added after that run, has not run
+  yet.
 
 ## Left from phase 02 (events and decoder)
 
