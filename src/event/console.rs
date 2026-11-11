@@ -8,7 +8,7 @@
 //! release and repeat, Ctrl with Enter and Backspace, the keypad, and the
 //! back and forward mouse buttons.
 
-use super::key::typed_char;
+use super::key::{typed_char, typed_with_shift};
 use super::{KeyCode, KeyEncoding, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
 use crate::event::MediaKeyCode;
 
@@ -170,6 +170,7 @@ impl ConsoleKeys {
         let mut event = match key {
             Key::Code(code) => KeyEvent::new(code, modifiers),
             Key::Char(c) => typed_char(c, modifiers),
+            Key::Typed(c) => typed_with_shift(c, modifiers),
         };
         // The record's own lock state, which `typed_char`'s guess at Caps
         // Lock gives way to.
@@ -246,14 +247,18 @@ impl ConsoleKeys {
     /// The character `unit` completes: itself, or with the high surrogate
     /// before it.
     fn typed(&mut self, unit: u16) -> Option<Key> {
-        self.text(unit).map(Key::Char)
+        self.text(unit).map(Key::Typed)
     }
 }
 
 /// A key: by code, or by the character it typed.
 enum Key {
     Code(KeyCode),
+    /// A character naming the key, Shift not in it: a letter or digit by
+    /// its virtual-key code, a control code's key.
     Char(char),
+    /// The character the key typed, Shift already in it.
+    Typed(char),
 }
 
 /// The key Ctrl was held with, where the console gives its control code

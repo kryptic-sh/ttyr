@@ -496,10 +496,14 @@ fn the_same_keypress_is_one_chord_from_every_encoding() {
     let caps_a = shift_a;
     let ctrl_shift_h = chord(KeyCode::Char('H'), CTRL);
     let ctrl_up = chord(KeyCode::Up, CTRL);
+    let bang = chord(KeyCode::Char('!'), NONE);
+    let ctrl_bang = chord(KeyCode::Char('!'), CTRL);
     let keymap = HashMap::from([
         (shift_a, "shift a"),
         (ctrl_shift_h, "ctrl shift h"),
         (ctrl_up, "ctrl up"),
+        (bang, "bang"),
+        (ctrl_bang, "ctrl bang"),
     ]);
     for (expected, forms) in [
         (
@@ -539,6 +543,18 @@ fn the_same_keypress_is_one_chord_from_every_encoding() {
                 b"\x1B[38;72;0;1;8;1_",
             ],
         ),
+        (
+            bang,
+            &[
+                b"!",
+                b"\x1B[27;2;33~",
+                // Flag 4, and flags 4 and 8 with the text.
+                b"\x1B[49:33;2u",
+                b"\x1B[49:33;2;33u",
+                b"\x1B[49;2;33;1;16;1_",
+            ],
+        ),
+        (ctrl_bang, &[b"\x1B[27;6;33~", b"\x1B[49:33;6u"]),
     ] {
         for &bytes in forms {
             let event = key(bytes);

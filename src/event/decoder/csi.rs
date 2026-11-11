@@ -3,6 +3,7 @@
 
 use super::{Input, Parsed, legacy_key, parse_alt, typed_char};
 use crate::event::console::KeyRecord;
+use crate::event::key::typed_with_shift;
 use crate::event::{
     ColorScheme, Event, KeyCode, KeyEncoding, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers,
     KeyboardEnhancementFlags, MediaKeyCode, ModeSetting, ModifierKeyCode, MouseButton, MouseEvent,
@@ -367,7 +368,8 @@ fn xterm_key(params: &Params) -> Option<KeyEvent> {
     let value = |i: usize| params.get(i)?.first().copied().flatten();
     let modifiers = xterm_modifiers(value(1).unwrap_or(1));
     let event = match control_key(value(2)?, modifiers.contains(KeyModifiers::SHIFT))? {
-        KeyCode::Char(c) => modified_char_key(c, modifiers, KeyEncoding::Xterm),
+        // xterm sends the character typed, Shift already in it.
+        KeyCode::Char(c) => typed_with_shift(c, modifiers),
         key => KeyEvent::new(key, modifiers),
     };
     Some(event.with_encoding(KeyEncoding::Xterm))

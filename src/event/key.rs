@@ -269,6 +269,21 @@ pub(super) fn typed_char(c: char, modifiers: KeyModifiers) -> KeyEvent {
     }
 }
 
+/// The key event for `c`, a character as typed (xterm's modifyOtherKeys,
+/// the console's character), held with `modifiers`: [`typed_char`], and a
+/// character that is not a letter, typed with Shift, kept as the shifted
+/// key too, since Shift went into it (Shift+1 arrives as `!`). Space, which
+/// Shift leaves as it is on every layout, keeps Shift as a modifier only.
+pub(super) fn typed_with_shift(c: char, modifiers: KeyModifiers) -> KeyEvent {
+    let event = typed_char(c, modifiers);
+    let letter = single_lower(c).is_some() || single_upper(c).is_some();
+    if modifiers.contains(KeyModifiers::SHIFT) && !letter && c != ' ' {
+        event.with_shifted(Some(c))
+    } else {
+        event
+    }
+}
+
 /// A key and the modifiers held with it, without the rest of a
 /// [`KeyEvent`]: what a keymap binds and looks up. [`KeyEvent::chord`] makes
 /// one from an event; [`KeyChord::new`] makes one for a binding.

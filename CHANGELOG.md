@@ -31,6 +31,15 @@ All notable changes to this project are documented here. The format follows
   `new(Char('q'), SHIFT)` are one chord. `KeyEvent`'s `==` and `Hash` stay
   exact, encoding included, and its docs now say so.
 
+### Changed
+
+- A character that is not a letter, typed with Shift, from the Windows console
+  or xterm's modifyOtherKeys (`CSI 27 ; 2 ; 33 ~`) now has itself in `shifted`:
+  those encodings send the character Shift made (Shift+1 as `!`), so
+  `logical_modifiers` and `chord()` no longer keep a Shift already used up, and
+  Shift+1 is the chord `!` there as from a legacy terminal or kitty's flag 4.
+  Space keeps Shift as a modifier.
+
 ### Fixed
 
 - Windows: a title-case letter from the console (`ǅ`) is the key as typed, as
