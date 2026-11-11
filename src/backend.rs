@@ -161,11 +161,16 @@ impl<W: Write> Backend for TtyrBackend<W> {
         self.writer.flush()
     }
 
+    /// The terminal's size, from [`terminal::size`]: the controlling
+    /// terminal's, or stdout's when there is none.
     fn size(&self) -> io::Result<Size> {
         let (width, height) = terminal::size()?;
         Ok(Size { width, height })
     }
 
+    /// The terminal's size in cells and pixels, from
+    /// [`terminal::window_size`]: the controlling terminal's, or stdout's
+    /// when there is none.
     fn window_size(&mut self) -> io::Result<WindowSize> {
         let size = terminal::window_size()?;
         Ok(WindowSize {

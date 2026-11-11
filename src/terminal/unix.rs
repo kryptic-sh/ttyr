@@ -24,15 +24,31 @@ pub struct WindowSize {
     pub height: u16,
 }
 
-/// The controlling terminal's size, columns then rows.
+/// The controlling terminal's size, columns then rows; with no controlling
+/// terminal, stdout's (see [`window_size`]).
 pub fn size() -> io::Result<(u16, u16)> {
     let size = window_size()?;
     Ok((size.columns, size.rows))
 }
 
-/// The controlling terminal's size, in cells and pixels.
+/// The controlling terminal's size, in cells and pixels. A program with no
+/// controlling terminal (a `setsid` launcher, some service managers) gets
+/// stdout's instead, as crossterm measures, and the error measuring it when
+/// stdout is not a terminal either.
 pub fn window_size() -> io::Result<WindowSize> {
-    window_size_of(open_tty()?)
+    window_size_with(open_tty, io::stdout())
+}
+
+/// [`window_size`] of the terminal `open` opens, or of `fallback` when it
+/// cannot be opened.
+fn window_size_with(
+    open: impl FnOnce() -> io::Result<OwnedFd>,
+    fallback: impl AsFd,
+) -> io::Result<WindowSize> {
+    match open() {
+        Ok(tty) => window_size_of(tty),
+        Err(_) => window_size_of(fallback),
+    }
 }
 
 /// The size of the terminal `tty`, columns then rows.

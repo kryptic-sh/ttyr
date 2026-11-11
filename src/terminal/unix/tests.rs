@@ -3,7 +3,9 @@
 use rustix::termios::{LocalModes, Termios, Winsize, tcgetattr, tcsetwinsize};
 
 use super::WindowSize;
-use super::{disable_raw_mode, enable_raw_mode_with, is_raw_mode_enabled, window_size_of};
+use super::{
+    disable_raw_mode, enable_raw_mode_with, is_raw_mode_enabled, window_size_of, window_size_with,
+};
 use crate::test_pty::{local_modes, pty, terminal_state as serial};
 
 /// The attributes raw mode changes, comparable.
@@ -98,4 +100,48 @@ fn raw_mode_and_size_on_a_given_terminal() {
     drop(tty);
     disable_raw_mode().unwrap();
     assert_eq!(modes(&tcgetattr(&probe).unwrap()), modes(&before));
+}
+
+/// A pty of `columns` by `rows`: the terminal's side, and the program's.
+fn sized_pty(columns: u16, rows: u16) -> (std::fs::File, std::os::fd::OwnedFd) {
+    let (term, tty) = pty();
+    let size = Winsize {
+        ws_row: rows,
+        ws_col: columns,
+        ws_xpixel: 0,
+        ws_ypixel: 0,
+    };
+    tcsetwinsize(&term, size).unwrap();
+    (term, tty)
+}
+
+#[test]
+fn the_size_is_the_controlling_terminals_where_it_opens() {
+    let (_term, tty) = sized_pty(80, 24);
+    let (_other, stdout) = sized_pty(132, 50);
+    let size = window_size_with(|| Ok(tty), &stdout).unwrap();
+    assert_eq!((size.columns, size.rows), (80, 24));
+}
+
+#[test]
+fn with_no_controlling_terminal_the_size_is_stdouts() {
+    let (_term, stdout) = sized_pty(132, 50);
+    let no_tty = || {
+        Err(std::io::Error::from_raw_os_error(
+            rustix::io::Errno::NXIO.raw_os_error(),
+        ))
+    };
+    let size = window_size_with(no_tty, &stdout).unwrap();
+    assert_eq!((size.columns, size.rows), (132, 50));
+}
+
+#[test]
+fn with_no_terminal_at_all_the_size_is_an_error() {
+    let no_tty = || {
+        Err(std::io::Error::from_raw_os_error(
+            rustix::io::Errno::NXIO.raw_os_error(),
+        ))
+    };
+    let (stdout, _write) = std::os::unix::net::UnixStream::pair().unwrap();
+    assert!(window_size_with(no_tty, &stdout).is_err());
 }

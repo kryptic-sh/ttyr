@@ -149,14 +149,6 @@ first within each group.
 
 ### Docs and API
 
-- **`TtyrBackend::size` and `window_size` always open `/dev/tty`**
-  (`src/backend.rs` calls `terminal::size`, which calls `open_tty`), so a
-  program with no controlling terminal, the `setsid` launcher case
-  `enable_raw_mode_on` and `size_of` were added for, fails every
-  `Terminal::draw` (ratatui's autoresize calls `size`). crossterm's backend
-  reads stdout's size. Inferred from reading. Fix: let the backend take the
-  terminal to measure (`TtyrBackend::with_tty(fd)`), or measure the writer's fd
-  when it is a tty.
 - **`restore_on_panic` restores on every panic, including ones the program
   catches.** The hook (`src/terminal/guard.rs`) runs for a worker thread's panic
   and inside `catch_unwind`, takes the `ON` record and `RAW` away, and the

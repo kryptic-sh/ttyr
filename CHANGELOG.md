@@ -19,6 +19,11 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- Unix: `terminal::size` and `window_size`, and so `TtyrBackend::size` and
+  `window_size` (ratatui's autoresize), measure stdout when there is no
+  controlling terminal to open, as crossterm does, instead of failing every
+  `Terminal::draw` in a `setsid` launcher or under a service manager. With
+  stdout not a terminal either, the error from measuring it comes back.
 - Windows: Ctrl with an OEM key the console gives no character for (Ctrl+;,
   Ctrl+, Ctrl+. and the rest) is now that key, its character on a US layout,
   where before the key was dropped. In the console's records and in
