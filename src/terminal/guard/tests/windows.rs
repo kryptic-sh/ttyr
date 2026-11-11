@@ -171,14 +171,30 @@ fn with_nothing_on_at_the_panic_there_is_nothing_to_resume() {
 }
 
 /// Runs `f` with the process's console gone, as when its window closed,
-/// then gives the process a console again.
+/// then gives the process a console again. `AllocConsole` points the
+/// standard handles at the new console, so they are put back as they were
+/// (cargo's pipes), or libtest's later output would go to that console and
+/// not to the log.
 fn without_a_console<T>(f: impl FnOnce() -> T) -> T {
-    use windows_sys::Win32::System::Console::{AllocConsole, FreeConsole};
+    use windows_sys::Win32::System::Console::{
+        AllocConsole, FreeConsole, GetStdHandle, STD_ERROR_HANDLE, STD_INPUT_HANDLE,
+        STD_OUTPUT_HANDLE, SetStdHandle,
+    };
+    let streams = [STD_INPUT_HANDLE, STD_OUTPUT_HANDLE, STD_ERROR_HANDLE];
+    // SAFETY: each is a standard device; the handles are only read.
+    let saved = streams.map(|stream| unsafe { GetStdHandle(stream) });
     // SAFETY: no arguments; the tests that use the console hold its lock.
     assert_ne!(unsafe { FreeConsole() }, 0);
     let result = f();
     // SAFETY: no arguments.
-    unsafe { AllocConsole() };
+    assert_ne!(unsafe { AllocConsole() }, 0);
+    for (stream, handle) in streams.into_iter().zip(saved) {
+        // SAFETY: `handle` is the value this stream had before; setting it
+        // only records it. (A pipe, as cargo gives the tests, outlives the
+        // console; a handle of the freed console would be stale, as it
+        // already was.)
+        assert_ne!(unsafe { SetStdHandle(stream, handle) }, 0);
+    }
     result
 }
 
