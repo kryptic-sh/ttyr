@@ -21,19 +21,19 @@ first within each group.
 
 ### Bugs
 
-- **A bracketed paste that never ends swallows every later key, and nothing can
-  reset the decoder.** `Decoder::paste` (`src/event/decoder.rs`) holds
-  everything after `CSI 200 ~` until `CSI 201 ~` arrives, with no length cap
-  (the CSI and string parsers have `MAX_CSI` and `MAX_STRING`). If the end never
-  comes (the program wrote `DisableBracketedPaste` while a paste was in flight,
-  a terminal or a ConPTY that dropped the end marker, a corrupted byte), every
-  key typed afterwards goes into the paste for ever. `Reader` wraps a private
-  `Decoder` with no `reset`, so only dropping the `Reader` recovers, and
-  `has_pending` stays true. Verified by running (keys after an unterminated
-  start are held across flushes). crossterm's parser waits the same way, as
-  recalled, not checked. Fix: a paste cap that gives the paste up as
-  `Event::Unknown`, or a `Decoder::reset` and `Reader::reset` the caller can use
-  after a timeout.
+- **A bracketed paste whose end marker is lost still swallows the keys typed
+  after it, up to the paste cap.** `Decoder::paste` (`src/event/decoder.rs`) now
+  gives a paste up as `Event::Unknown` once it passes `MAX_PASTE` with no
+  `CSI 201 ~`, which bounds memory and makes recovery certain, but a person
+  typing after a lost end marker (the program wrote `DisableBracketedPaste`
+  mid-paste, a terminal or ConPTY dropped the marker) never types that much, so
+  in practice their keys still vanish until the `Reader` is dropped. Recovering
+  sooner is a decision: new API (`Decoder::reset` and `Reader::reset`, which a
+  caller uses after its own timeout; additive, so a minor bump rather than the
+  patch this fix went into), or a policy in `Reader::wait` that gives a paste up
+  when nothing has arrived for some time (no new API, but a paste a slow ConPTY
+  delivers in pieces would then be cut in two). crossterm's parser waits the
+  same way, as recalled, not checked.
 - **Windows: a failing `SetConsoleMode` in `release` skips the off sequences and
   leaves raw mode on.** In `release` (`src/terminal/guard.rs`) the
   `#[cfg(windows)]` loop `mode.set_console(false)?` runs after `mem::take` has

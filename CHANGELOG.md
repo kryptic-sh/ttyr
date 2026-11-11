@@ -8,6 +8,10 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- A bracketed paste whose end marker never comes is no longer held for ever:
+  past 16 MiB without one, the decoder gives it up as `Event::Unknown` (its
+  start marker and the bytes held) and reads what follows afresh, so memory
+  stays bounded and the input recovers.
 - `Reader::poll`, `read` and `collect_answers` no longer panic when bytes are
   held under an escape timeout too long to add to the time
   (`set_escape_timeout(Some(Duration::MAX))`): such a timeout never reads a lone

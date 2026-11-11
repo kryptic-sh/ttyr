@@ -13,6 +13,11 @@ const ESC: u8 = 0x1B;
 /// What bracketed paste ends with.
 const PASTE_END: &[u8] = b"\x1B[201~";
 
+/// The longest bracketed paste held for its end marker before it is given
+/// up, so that a paste whose end never comes cannot hold the input, and
+/// memory, for ever. Far above any paste a person makes.
+const MAX_PASTE: usize = 16 << 20;
+
 /// Reads the bytes a terminal sends as [`Event`]s.
 ///
 /// Feed it bytes as they are read, then take events until it has no more. A
@@ -41,9 +46,8 @@ pub struct Decoder {
     buf: Vec<u8>,
     /// Where the undecoded bytes start in `buf`.
     start: usize,
-    /// Inside a bracketed paste: how much of the pasted text has been searched
-    /// for its end.
-    paste_scanned: Option<usize>,
+    /// Inside a bracketed paste, which begins at `start`.
+    paste: Option<Paste>,
     /// What spans win32-input-mode's key records: the key held, and half a
     /// surrogate pair.
     console: ConsoleKeys,
@@ -85,7 +89,10 @@ impl Decoder {
     /// The next event, taking the bytes fed so far as all there is: a lone
     /// `ESC` is Escape, and `ESC` with one byte after it is Alt+that key.
     /// A longer sequence that has begun is still held, as is a bracketed
-    /// paste, which ends only with its end marker.
+    /// paste, which ends only with its end marker. (A paste whose end marker
+    /// has not come after many megabytes is given up as
+    /// [`Event::Unknown`], its start marker and the bytes held, and what
+    /// follows is read as typed.)
     pub fn flush_event(&mut self) -> Option<Event> {
         self.decode(true)
     }
@@ -133,8 +140,8 @@ impl Decoder {
                 }
             }
             let pending = &self.buf[self.start..];
-            if let Some(scanned) = self.paste_scanned {
-                return self.paste(scanned);
+            if let Some(paste) = self.paste {
+                return self.paste(paste);
             }
             if pending.is_empty() {
                 return None;
@@ -145,8 +152,10 @@ impl Decoder {
                     return Some(event);
                 }
                 Parsed::PasteStart(len) => {
-                    self.start += len;
-                    self.paste_scanned = Some(0);
+                    self.paste = Some(Paste {
+                        marker: len,
+                        scanned: 0,
+                    });
                 }
                 Parsed::ConsoleKey(record, len) if record.is_text() => {
                     self.start += len;
@@ -171,23 +180,46 @@ impl Decoder {
         }
     }
 
-    /// The paste, once its end has arrived. `scanned` bytes of it are known
-    /// not to hold the end marker's start.
-    fn paste(&mut self, scanned: usize) -> Option<Event> {
+    /// The paste, once its end has arrived, or given up as unknown once it
+    /// is longer than [`MAX_PASTE`] without one.
+    fn paste(&mut self, paste: Paste) -> Option<Event> {
         let pending = &self.buf[self.start..];
-        let Some(end) = pending[scanned..]
+        let text = &pending[paste.marker..];
+        // Search no further than the longest paste, so that where one is
+        // given up does not depend on how much has arrived.
+        let capped = &text[..text.len().min(MAX_PASTE + PASTE_END.len())];
+        let Some(end) = capped[paste.scanned..]
             .windows(PASTE_END.len())
             .position(|w| w == PASTE_END)
         else {
-            self.paste_scanned = Some(pending.len().saturating_sub(PASTE_END.len() - 1));
+            if text.len() >= MAX_PASTE + PASTE_END.len() {
+                let given_up = pending[..paste.marker + MAX_PASTE].to_vec();
+                self.start += given_up.len();
+                self.paste = None;
+                return Some(Event::Unknown(given_up));
+            }
+            self.paste = Some(Paste {
+                scanned: capped.len().saturating_sub(PASTE_END.len() - 1),
+                ..paste
+            });
             return None;
         };
-        let end = scanned + end;
-        let text = String::from_utf8_lossy(&pending[..end]).into_owned();
-        self.start += end + PASTE_END.len();
-        self.paste_scanned = None;
+        let end = paste.scanned + end;
+        let text = String::from_utf8_lossy(&text[..end]).into_owned();
+        self.start += paste.marker + end + PASTE_END.len();
+        self.paste = None;
         Some(Event::Paste(text))
     }
+}
+
+/// A bracketed paste whose end has not arrived.
+#[derive(Debug, Clone, Copy)]
+struct Paste {
+    /// How long its start marker is.
+    marker: usize,
+    /// How much of the pasted text is known not to hold the end marker's
+    /// start.
+    scanned: usize,
 }
 
 /// What reading the bytes depends on besides them.

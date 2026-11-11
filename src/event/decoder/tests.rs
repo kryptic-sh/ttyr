@@ -665,6 +665,50 @@ fn paste_across_reads_waits_for_its_end() {
     }
 }
 
+#[test]
+fn a_paste_with_no_end_is_given_up_at_its_cap() {
+    // Its end marker lost, a paste would hold every key typed after it.
+    let start = b"\x1B[200~";
+    let mut held = start.to_vec();
+    held.resize(start.len() + super::MAX_PASTE, b'p');
+    for chunk in [usize::MAX, super::MAX_PASTE / 3] {
+        let mut decoder = Decoder::new();
+        for part in held.chunks(chunk.min(held.len())) {
+            decoder.feed(part);
+            assert_eq!(decoder.flush_event(), None);
+        }
+        // Not given up until it is longer than any paste with its end.
+        decoder.feed(b"\x1B[201");
+        assert_eq!(decoder.flush_event(), None);
+        decoder.feed(b"x");
+        let Some(Event::Unknown(given_up)) = decoder.next_event() else {
+            panic!("the paste was not given up");
+        };
+        assert!(given_up == held, "{} bytes given up", given_up.len());
+        // What follows is decoded afresh: the broken end marker, then keys.
+        decoder.feed(b"a");
+        assert_eq!(
+            drain(&mut decoder),
+            [
+                Event::Unknown(b"\x1B[201x".to_vec()),
+                Event::Key(legacy(KeyCode::Char('a'), NONE)),
+            ]
+        );
+    }
+    // A paste the size of the cap still ends.
+    let mut decoder = Decoder::new();
+    decoder.feed(&held);
+    decoder.feed(b"\x1B[201~a");
+    let Some(Event::Paste(text)) = decoder.next_event() else {
+        panic!("not a paste");
+    };
+    assert_eq!(text.len(), super::MAX_PASTE);
+    assert_eq!(
+        drain(&mut decoder),
+        [Event::Key(legacy(KeyCode::Char('a'), NONE))]
+    );
+}
+
 // ── Reports ─────────────────────────────────────────────────────────────────
 
 #[test]
