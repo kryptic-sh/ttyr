@@ -26,8 +26,9 @@ for and not find, on purpose:
   `base_layout` and `text`; `logical_char()` is the character meant, and
   `chord()` is what a keymap compares.
 - **`cursor::position()` and `supports_keyboard_enhancement()`.** Both write a
-  query and block until the terminal answers, which hangs a terminal that never
-  does. ttyr never waits on the terminal: write `RequestCursorPosition` or
+  query and block until the terminal answers, up to two seconds on Unix, then
+  fail: a stall at startup, or in a test harness, on a terminal that never
+  answers. ttyr never waits on the terminal: write `RequestCursorPosition` or
   `RequestKeyboardEnhancementFlags` (with `RequestPrimaryDeviceAttributes` last)
   and read the answers as `Event::Report`, or with
   `Reader::collect_answers(timeout)`.
