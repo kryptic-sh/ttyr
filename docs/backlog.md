@@ -86,12 +86,6 @@ first within each group.
   lead byte up at a flush, which misreads a character split across the
   terminal's writes when the reader has no escape timeout. Record which is
   wanted.
-- **A non-blocking fd given to `Reader::from_fd` makes `poll` fail.**
-  `Source::read_tty` (`src/reader/unix.rs`) treats every error but `EINTR` as
-  fatal, so an fd another library has set `O_NONBLOCK` on (stdin under some
-  async runtimes) returns `WouldBlock` as an error from `poll` the first time
-  `select` reports readiness a hair before the data. Inferred from reading. Fix:
-  treat `EAGAIN` as nothing read, or document the fd must be blocking.
 
 ### Test coverage
 

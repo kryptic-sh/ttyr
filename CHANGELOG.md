@@ -8,6 +8,9 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- `Reader` over a non-blocking fd (`Reader::from_fd` with `O_NONBLOCK` set, as
+  some async runtimes leave stdin) no longer fails `poll` and `read` with
+  `WouldBlock` when the tty has nothing to read after all; the wait goes on.
 - A kitty `CSI u` key with an empty text parameter, or an empty value in it
   (`CSI 97 ; 1 ; u`, `CSI 97 ; ; u`), is the key with no text instead of
   `Event::Unknown`.

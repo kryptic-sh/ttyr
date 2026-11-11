@@ -15,6 +15,9 @@ use signal_hook::consts::SIGWINCH;
 use super::Queue;
 use crate::event::Event;
 
+#[cfg(test)]
+mod tests;
+
 /// The most bytes taken from the tty in one read.
 const READ_CHUNK: usize = 4096;
 
@@ -85,8 +88,10 @@ impl Source {
                 ));
             }
             Ok(n) => n,
-            // The wait goes round again and reads it then.
-            Err(Errno::INTR) => return Ok(()),
+            // The wait goes round again and reads it then. A non-blocking
+            // fd (another library may have set O_NONBLOCK on stdin) says
+            // so when what `select` saw is gone, read by someone else.
+            Err(Errno::INTR | Errno::AGAIN) => return Ok(()),
             Err(err) => return Err(err.into()),
         };
         queue.feed(&buf[..n]);
