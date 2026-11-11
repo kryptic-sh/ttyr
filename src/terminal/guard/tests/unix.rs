@@ -190,3 +190,56 @@ fn a_mode_turned_on_between_panic_and_resume_is_not_written_twice() {
     restore(&mut out).unwrap();
     assert_eq!(text(&out), "\x1B[?2004l\x1B[?1004l\x1B[?25h");
 }
+
+#[test]
+fn a_restore_whose_write_fails_still_leaves_raw_mode() {
+    let _state = terminal_state();
+    let (_term, tty) = pty();
+    let cooked = tcgetattr(&tty).unwrap();
+    raw(&tty);
+    enable(&mut Vec::new(), Mode::BracketedPaste).unwrap();
+    assert!(restore(&mut crate::test_bytes::Broken).is_err());
+    assert!(!is_raw_mode_enabled());
+    assert_eq!(local_modes(&tcgetattr(&tty).unwrap()), local_modes(&cooked));
+}
+
+#[test]
+fn a_panic_inside_the_guards_record_still_leaves_raw_mode() {
+    let _state = terminal_state();
+    let (_term, tty) = pty();
+    let cooked = tcgetattr(&tty).unwrap();
+    raw(&tty);
+    enable(&mut Vec::new(), Mode::BracketedPaste).unwrap();
+    // The hook, run while this thread holds the record, as a panic from
+    // inside the guard would: the record is skipped, not waited for.
+    {
+        let _held = super::super::on();
+        super::super::restore_after_panic();
+    }
+    assert!(!is_raw_mode_enabled());
+    assert_eq!(local_modes(&tcgetattr(&tty).unwrap()), local_modes(&cooked));
+    // The record was left as it was.
+    let mut out = Vec::new();
+    restore(&mut out).unwrap();
+    assert_eq!(text(&out), "\x1B[?2004l\x1B[?25h");
+}
+
+#[test]
+fn a_panic_in_suspend_with_leaves_the_terminal_given_back() {
+    let _state = terminal_state();
+    let (_term, tty) = pty();
+    let cooked = tcgetattr(&tty).unwrap();
+    raw(&tty);
+    enable(&mut Vec::new(), Mode::BracketedPaste).unwrap();
+    let panicked = std::panic::catch_unwind(|| {
+        suspend_with(&mut Vec::new(), || panic!("on purpose")).unwrap();
+    });
+    assert!(panicked.is_err());
+    // Given back, and the modes are not turned on again.
+    assert!(!is_raw_mode_enabled());
+    assert_eq!(local_modes(&tcgetattr(&tty).unwrap()), local_modes(&cooked));
+    let mut out = Vec::new();
+    assert!(!resume_after_panic(&mut out).unwrap());
+    restore(&mut out).unwrap();
+    assert!(out.is_empty());
+}

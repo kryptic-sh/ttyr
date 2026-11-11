@@ -67,20 +67,6 @@ first within each group.
   `AllocConsole` gives the tests a console, so `Reader::open`, `terminal::size`
   and `enable_raw_mode` are covered there; the backend's `size` and
   `window_size` are not covered on any platform.
-- **The guard's failure paths have no test.** `restore` with a writer that fails
-  (the doc promises the record is cleared and raw mode turned off anyway),
-  `enable` with a writer that fails (the mode must not be recorded),
-  `restore_after_panic` while `ON` or `RAW` is held (the `WouldBlock` arm of
-  `lock_after_panic` in `src/terminal.rs` is uncovered), and `suspend_with`
-  whose `f` panics (the terminal stays given back, the modes are lost). All
-  inferred from reading and the coverage run. `src/command/tests.rs` already has
-  a `Broken` writer to reuse.
-- **`Mode::ColorSchemeReports`, `Mode::ModifyOtherKeys` and `Mode::Win32Input`
-  never go through `enable`, `disable` or `restore`.** Their `write_on` and
-  `write_off` arms in `src/terminal/guard.rs` are uncovered; only the bare
-  commands are checked in `src/terminal/modes/tests.rs`. A table test over every
-  `Mode` variant asserting its on bytes, off bytes and place in `restore`'s
-  reverse order would close it, and runs on every platform.
 - **The `serde` feature has no test.** Nothing serializes an `Event` and reads
   it back; `cargo test --all-features` only compiles the derives. tmxr sends
   `Event`s between its client and server with it. A round trip needs a format

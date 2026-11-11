@@ -4,6 +4,7 @@ use std::fmt;
 use std::io::{self, Write};
 
 use super::{Command, ExecutableCommand, QueueableCommand};
+use crate::test_bytes::Broken;
 
 /// A command writing its text in two pieces.
 struct Text(&'static str, &'static str);
@@ -30,19 +31,6 @@ impl Write for Recorder {
 
     fn flush(&mut self) -> io::Result<()> {
         self.flushes += 1;
-        Ok(())
-    }
-}
-
-/// A writer that refuses everything.
-struct Broken;
-
-impl Write for Broken {
-    fn write(&mut self, _: &[u8]) -> io::Result<usize> {
-        Err(io::Error::new(io::ErrorKind::BrokenPipe, "gone"))
-    }
-
-    fn flush(&mut self) -> io::Result<()> {
         Ok(())
     }
 }
