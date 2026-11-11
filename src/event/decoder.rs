@@ -6,7 +6,7 @@ mod strings;
 mod tests;
 
 use super::console::{ConsoleKeys, KeyRecord};
-use super::key::single_lower;
+use super::key::{single_lower, typed_char};
 use super::{Event, KeyCode, KeyEncoding, KeyEvent, KeyEventState, KeyModifiers, Report};
 
 const ESC: u8 = 0x1B;
@@ -284,15 +284,15 @@ fn legacy_key(key: KeyCode, modifiers: KeyModifiers) -> KeyEvent {
     KeyEvent::new(key, modifiers).with_encoding(KeyEncoding::Legacy)
 }
 
-/// A character key: an upper-case letter as its lower case with Shift, the
-/// letter it typed kept as the shifted key.
+/// A character key from bytes that cannot say whether Shift was held: an
+/// upper-case letter is taken as typed with Shift (see [`typed_char`]).
 fn char_key(c: char, modifiers: KeyModifiers, encoding: KeyEncoding) -> KeyEvent {
-    let event = match single_lower(c) {
-        Some(lower) => KeyEvent::new(KeyCode::Char(lower), modifiers | KeyModifiers::SHIFT)
-            .with_shifted(Some(c)),
-        None => KeyEvent::new(KeyCode::Char(c), modifiers),
+    let modifiers = if single_lower(c).is_some() {
+        modifiers | KeyModifiers::SHIFT
+    } else {
+        modifiers
     };
-    event.with_encoding(encoding)
+    typed_char(c, modifiers).with_encoding(encoding)
 }
 
 /// A UTF-8 character, or the bytes that are not one.

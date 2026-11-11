@@ -1,7 +1,7 @@
 //! CSI sequences: keys in every encoding, the mouse, focus, paste and the
 //! terminal's reports.
 
-use super::{Input, Parsed, char_key, legacy_key, parse_alt, single_lower};
+use super::{Input, Parsed, legacy_key, parse_alt, typed_char};
 use crate::event::console::KeyRecord;
 use crate::event::{
     ColorScheme, Event, KeyCode, KeyEncoding, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers,
@@ -373,19 +373,10 @@ fn xterm_key(params: &Params) -> Option<KeyEvent> {
     Some(event.with_encoding(KeyEncoding::Xterm))
 }
 
-/// A character sent with its modifiers. An upper-case letter without Shift
-/// was typed with Caps Lock on, as xterm sends Ctrl+h then
-/// (`CSI 27 ; 5 ; 72 ~`): the letter's lower case, with Caps Lock in the
-/// state, as kitty reports it. Otherwise as [`char_key`] reads it.
+/// A character sent with its modifiers, which say whether Shift was held
+/// (see [`typed_char`]).
 fn modified_char_key(c: char, modifiers: KeyModifiers, encoding: KeyEncoding) -> KeyEvent {
-    match single_lower(c) {
-        Some(lower) if !modifiers.contains(KeyModifiers::SHIFT) => {
-            KeyEvent::new(KeyCode::Char(lower), modifiers)
-                .with_state(KeyEventState::CAPS_LOCK)
-                .with_encoding(encoding)
-        }
-        _ => char_key(c, modifiers, encoding),
-    }
+    typed_char(c, modifiers).with_encoding(encoding)
 }
 
 /// A code point as a key: the C0 keys by name, Shift+Tab as

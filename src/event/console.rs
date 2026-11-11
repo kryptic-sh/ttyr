@@ -8,7 +8,7 @@
 //! release and repeat, Ctrl with Enter and Backspace, the keypad, and the
 //! back and forward mouse buttons.
 
-use super::key::single_lower;
+use super::key::typed_char;
 use super::{KeyCode, KeyEncoding, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
 use crate::event::MediaKeyCode;
 
@@ -169,8 +169,10 @@ impl ConsoleKeys {
         }
         let mut event = match key {
             Key::Code(code) => KeyEvent::new(code, modifiers),
-            Key::Char(c) => char_event(c, modifiers),
+            Key::Char(c) => typed_char(c, modifiers),
         };
+        // The record's own lock state, which `typed_char`'s guess at Caps
+        // Lock gives way to.
         event = event.with_kind(kind).with_state(state(record));
         Some(event.with_encoding(KeyEncoding::Windows))
     }
@@ -288,24 +290,6 @@ const fn us_oem_char(vk: u16) -> Option<char> {
         VK_OEM_7 => '\'',
         _ => return None,
     })
-}
-
-/// A typed character's event, as the decoder makes a legacy terminal's: an
-/// upper-case letter typed with Shift is its lower case with Shift, the
-/// letter typed in `shifted`; one typed by Caps Lock alone is its lower case
-/// with the lock in the state.
-fn char_event(c: char, modifiers: KeyModifiers) -> KeyEvent {
-    match single_lower(c) {
-        Some(l) => {
-            let event = KeyEvent::new(KeyCode::Char(l), modifiers);
-            if modifiers.contains(KeyModifiers::SHIFT) {
-                event.with_shifted(Some(c))
-            } else {
-                event
-            }
-        }
-        None => KeyEvent::new(KeyCode::Char(c), modifiers),
-    }
 }
 
 /// Shift, Ctrl and Alt from the control key state.

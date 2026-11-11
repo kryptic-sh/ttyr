@@ -251,6 +251,24 @@ pub(super) fn single_lower(c: char) -> Option<char> {
     (lower.next().is_none() && l != c).then_some(l)
 }
 
+/// The key event for a typed character `c`, held with `modifiers`, in every
+/// encoding: an upper-case letter is its lower case, kept as the shifted
+/// key where Shift was held, and put down to Caps Lock where it was not (as
+/// xterm sends Ctrl+h with Caps Lock on, `CSI 27 ; 5 ; 72 ~`, and as kitty
+/// reports the lock). An encoding that cannot say whether Shift was held (a
+/// legacy terminal's bytes) adds Shift for an upper-case letter first.
+pub(super) fn typed_char(c: char, modifiers: KeyModifiers) -> KeyEvent {
+    match single_lower(c) {
+        Some(lower) if modifiers.contains(KeyModifiers::SHIFT) => {
+            KeyEvent::new(KeyCode::Char(lower), modifiers).with_shifted(Some(c))
+        }
+        Some(lower) => {
+            KeyEvent::new(KeyCode::Char(lower), modifiers).with_state(KeyEventState::CAPS_LOCK)
+        }
+        None => KeyEvent::new(KeyCode::Char(c), modifiers),
+    }
+}
+
 /// A key and the modifiers held with it, without the rest of a
 /// [`KeyEvent`]: what a keymap binds and looks up. [`KeyEvent::chord`] makes
 /// one from an event; [`KeyChord::new`] makes one for a binding.

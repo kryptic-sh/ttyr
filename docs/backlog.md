@@ -74,15 +74,6 @@ first within each group.
 
 ### Code quality
 
-- **Three copies of the "an upper-case letter arrived" rule.** `char_key`
-  (`src/event/decoder.rs`), `modified_char_key` (`src/event/decoder/csi.rs`) and
-  `char_event` (`src/event/console.rs`) each decide how an upper-case character
-  becomes a lower-case `key` with Shift, `shifted` and Caps Lock, with
-  `single_lower` in the decoder, an inline `to_lowercase` in `char_event`, and
-  `single_upper` in `src/event/key.rs` for the inverse. They already differ
-  (Caps Lock alone gives `shifted` in `char_key` and not in `char_event`), and a
-  fix to one does not reach the others. One function taking whether Shift was
-  held and whether Caps Lock is known would hold the knowledge once.
 - **The reader tests are duplicated between `src/reader/tests.rs` and
   `src/reader/windows/tests.rs`**: most tests share a name and a body and differ
   only in how the terminal is driven (a pty write, an injected record). A fix to
