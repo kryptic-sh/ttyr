@@ -140,28 +140,39 @@ as a decision, and the coverage that is still missing or cannot be tested.
 
 ## Phase 07 in progress (Windows)
 
-- **Nothing in phase 07 has run on a real Windows console yet.** The Windows
-  tests (`src/reader/windows/tests.rs`, `src/terminal/windows/tests.rs`) write
-  records into a console the test process allocates, so they exercise the
-  console API, not Windows Terminal, conhost's own keyboard handling or ConPTY.
+- **Not run by hand at a keyboard yet.** Measured on Windows 11 26300
+  (2026-11-13) with a scratch reader driven without a person: conhost started
+  directly (`conhost.exe probe`), and the system ConPTY with tmxr 0.15 as the
+  outer terminal (`tmxr send-keys`, `paste-buffer -p`). What that showed is
+  recorded in the entries below and in `docs/plan/07-windows.md`. Still to do
+  with someone at the keyboard, in Windows Terminal: a paste with
+  `Mode::VirtualTerminalInput`, `Mode::Win32Input` and `Mode::BracketedPaste`
+  (hjkl's planned modes; through tmxr's ConPTY it is one `Event::Paste`), AltGr
+  characters on a non-US layout, whether kitty flags do anything (tmxr answered
+  them in the run above, not Windows Terminal), and focus records in conhost
+  when the window loses and regains focus.
 - **Focus records are read only with VT input off**, as crossterm reads them,
   although Microsoft documents `FOCUS_EVENT` as the console's internal. With VT
   input on they are dropped, so focus is reported once, by the terminal under
-  mode 1004. Not checked on a real console: whether conhost sends them when the
-  window gains and loses focus.
+  mode 1004. conhost sends one gained record when the program starts, in both
+  input modes (measured); its records when the window loses and regains focus
+  were not measured.
 - **A key record with no virtual-key and no scan code is text**
   (`KeyRecord::is_text`), read as a terminal's bytes, in win32-input-mode and in
-  the console's records. tmxr's review recalled conhost writing its answers to
-  queries (DA1, likely the OSC colours) into the input that way; unverified on a
-  real console. A character typed with no key behind it (IME, `SendInput`
-  without a virtual key) reads as a legacy key with no release either.
+  the console's records. Measured: conhost writes its own DA1 answer
+  (`CSI ? 61 ; 1 ; 6 ; … c`) into the input so, and ConPTY writes the outer
+  terminal's answers so, with VT input off, on, and with win32-input-mode on;
+  each reads as `Report::PrimaryDeviceAttributes`. A character typed with no key
+  behind it (IME, `SendInput` without a virtual key) reads as a legacy key with
+  no release either.
 - **An Alt code's release is made up**: the console sends its character only
-  with Alt's release, so ttyr reports a press and, at once, a release.
+  with Alt's release, so ttyr reports the character's press and, at once, its
+  release, then Alt's release.
 - **`window_size` has no pixels behind ConPTY**: conhost reports its font (8×16
   Consolas measured, 960×480 for 120×30, matching its client area), but under
   ConPTY `GetCurrentConsoleFontEx` gives a width of 0 and the console window is
   0×0, so Windows Terminal's pixels are 0. A program that needs them there asks
-  the terminal (`CSI 14 t`, not decoded yet; see phase 02).
+  the terminal (`CSI 14 t`, whose answer ttyr does not decode yet).
 - **AltGr pressed alone is left Ctrl and right Alt**: the console sends a record
   for the left Ctrl it makes up for AltGr, so a lone AltGr is
   `Modifier(LeftControl)` and `Modifier(RightAlt)`, pressed and released, not

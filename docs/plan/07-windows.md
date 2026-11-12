@@ -15,17 +15,27 @@ windows-latest:
   `Mode::Win32Input` writes `CSI ? 9001 h`. `suspend` is Unix only (no job
   control), and `suspend_with` works on both.
 
+Measured on Windows 11 26300 (2026-11-13), with a scratch reader and no person
+at the keyboard: the suite passes natively (`x86_64-pc-windows-msvc`); conhost
+started directly; and the system ConPTY with tmxr 0.15 as the outer terminal,
+keys from `tmxr send-keys` and pastes from `paste-buffer -p`.
+
+- conhost answers DA1 itself, as text records (no virtual-key or scan code);
+  ConPTY passes a query out and writes the outer terminal's answer back the same
+  way. Both read as `Report`s with VT input off, on, and with win32-input-mode
+  on. conhost ignores `?9001`.
+- Through ConPTY: VT input with bracketed paste gives one `Event::Paste`. With
+  win32-input-mode on as well, the paste stays bracketed, but ConPTY sends its
+  line breaks as Enter's records, which the decoder now reads back as `\r`. With
+  VT input off a paste is keystrokes. ConPTY honours `?9001` itself.
+- Through ConPTY with VT input on, kitty flags are pushed and queried, and keys
+  arrive kitty-encoded (the outer terminal, tmxr, implements kitty).
+- conhost reports its font size, so pixels; ConPTY reports none.
+
 Still to do:
 
-- **Run it on a real Windows machine**: Windows Terminal (records, VT input and
-  win32-input-mode), conhost, and ConPTY behind another terminal. The owner
-  plans a session this week. Among what to check: bracketed paste arriving as
-  one `Event::Paste` with `Mode::VirtualTerminalInput` and
-  `Mode::BracketedPaste` on (hjkl's plan for its Windows path, against pastes
-  crossterm turned into keystrokes), in Windows Terminal and in conhost; and
-  AltGr characters without Ctrl+Alt. Also: focus records in conhost with VT
-  input off, an answer to DA1 in conhost with win32-input-mode on (text records,
-  not keys), and a character the layout lacks (an Alt code, pressed and
-  released).
-- **Not known yet**: whether kitty keyboard sequences survive ConPTY at all
-  (tmxr's plan 18 expects Windows panes to stay at kitty flag 1 or below).
+- **Run it by hand in Windows Terminal**: a paste with
+  `Mode::VirtualTerminalInput`, `Mode::Win32Input` and `Mode::BracketedPaste`
+  (hjkl's planned modes), AltGr characters on a non-US layout, whether kitty
+  flags do anything in Windows Terminal itself, and an Alt code typed on the
+  keypad. In conhost: focus records when the window loses and regains focus.
