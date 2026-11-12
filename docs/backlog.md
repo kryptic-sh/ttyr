@@ -171,8 +171,6 @@ as a decision, and the coverage that is still missing or cannot be tested.
   console gives no control code (Ctrl+; and the other OEM keys) the key is read
   from the layout (`layout_char` in `src/reader/windows.rs`), falling back to
   `us_oem_char` for a dead key or a `Decoder` with no layout.
-- **win32-input-mode's repeat count (`Rc`) is not read.** Windows Terminal sends
-  a held key as more records, which read as repeats.
 
 ## Left from phase 05 (output)
 

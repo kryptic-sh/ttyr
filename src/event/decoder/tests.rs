@@ -1444,6 +1444,32 @@ fn win32_input_mode_records() {
     assert_eq!(decode(b"\x1B[16;42;0;1;16;1_"), []);
 }
 
+#[test]
+fn win32_input_modes_repeat_count_is_that_many_keys() {
+    use KeyEventKind::{Release, Repeat};
+    let a =
+        KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE).with_encoding(KeyEncoding::Windows);
+    // `a` down three times in one record, then up (a release's count is
+    // one release), then `b`.
+    let mut decoder = Decoder::new();
+    decoder.feed(b"\x1B[65;30;97;1;0;3_\x1B[65;30;97;0;0;3_b");
+    assert_eq!(
+        drain(&mut decoder),
+        [
+            Event::Key(a.clone()),
+            Event::Key(a.clone().with_kind(Repeat)),
+            Event::Key(a.clone().with_kind(Repeat)),
+            Event::Key(a.clone().with_kind(Release)),
+            Event::Key(legacy(KeyCode::Char('b'), NONE)),
+        ]
+    );
+    // A count of 0, or left out, is one.
+    assert_eq!(
+        decode(b"\x1B[65;30;97;1;0;0_\x1B[65;30;97;1;0_"),
+        [Event::Key(a.clone()), Event::Key(a.with_kind(Repeat))]
+    );
+}
+
 /// win32-input-mode records for `text`, as conhost writes its answers to
 /// queries: no virtual-key or scan code, each unit down then up.
 fn text_records(text: &str) -> Vec<u8> {

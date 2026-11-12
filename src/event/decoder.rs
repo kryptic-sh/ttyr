@@ -5,7 +5,7 @@ mod strings;
 #[cfg(test)]
 mod tests;
 
-use super::console::{ConsoleKeys, KeyRecord};
+use super::console::{ConsoleKeys, KeyEvents, KeyRecord};
 use super::key::{single_lower, typed_char};
 use super::{Event, KeyCode, KeyEncoding, KeyEvent, KeyEventState, KeyModifiers, Report};
 
@@ -55,9 +55,9 @@ pub struct Decoder {
     /// Whether the kitty keyboard protocol is on, which decides what a
     /// key's modifier bit 8 is.
     kitty_keyboard: bool,
-    /// The release that follows an Alt code's character, which one record
-    /// brings with the press.
-    release: Option<KeyEvent>,
+    /// The events after the first that one win32-input-mode record
+    /// brings: its repeat count's repeats, an Alt code's release.
+    record_events: KeyEvents,
     /// The bytes win32-input-mode's text records stand for (see
     /// [`KeyRecord::is_text`]), read on their own: a sequence in them is
     /// spread over records, so not in a row in `buf`.
@@ -133,8 +133,8 @@ impl Decoder {
     }
 
     fn next(&mut self, at_end: bool) -> Option<Event> {
-        if let Some(release) = self.release.take() {
-            return Some(Event::Key(release));
+        if let Some(event) = self.record_events.next() {
+            return Some(Event::Key(event));
         }
         let input = Input {
             at_end,
@@ -178,9 +178,8 @@ impl Decoder {
                 }
                 Parsed::ConsoleKey(record, len) => {
                     self.start += len;
-                    let mut events = self.console.events(&record);
-                    if let Some(key) = events.next() {
-                        self.release = events.next();
+                    self.record_events = self.console.events(&record);
+                    if let Some(key) = self.record_events.next() {
                         return Some(Event::Key(key));
                     }
                 }

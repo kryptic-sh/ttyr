@@ -16,6 +16,7 @@ fn record(vk: u16, unit: u16, down: bool, state: u32) -> KeyRecord {
         unit,
         down,
         state,
+        repeat: 1,
     }
 }
 
@@ -46,6 +47,30 @@ fn a_key_presses_repeats_and_releases() {
         released,
         key(KeyCode::Char('a'), KeyModifiers::NONE).with_kind(Release)
     );
+}
+
+#[test]
+fn a_records_repeat_count_is_that_many_keys() {
+    use KeyEventKind::{Press, Release, Repeat};
+    let mut keys = ConsoleKeys::default();
+    let kinds = |keys: &mut ConsoleKeys, record| -> Vec<_> {
+        keys.events(&record).map(|event| event.kind).collect()
+    };
+    let a = |down, repeat| KeyRecord {
+        repeat,
+        ..record(0x41, unit('a'), down, 0)
+    };
+    assert_eq!(kinds(&mut keys, a(true, 3)), [Press, Repeat, Repeat]);
+    assert_eq!(kinds(&mut keys, a(true, 2)), [Repeat, Repeat]);
+    // A release is one, whatever its count; 0 is read as 1.
+    assert_eq!(kinds(&mut keys, a(false, 4)), [Release]);
+    assert_eq!(kinds(&mut keys, a(true, 0)), [Press]);
+    // An Alt code's character is typed once, and released.
+    let alt_code = KeyRecord {
+        repeat: 3,
+        ..record(VK_MENU, unit('é'), false, 0)
+    };
+    assert_eq!(kinds(&mut keys, alt_code), [Press, Release]);
 }
 
 #[test]

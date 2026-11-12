@@ -22,6 +22,14 @@ All notable changes to this project are documented here. The format follows
   layout, keeps the US character; Ctrl with a key that has a control code
   (Ctrl+\[, Ctrl+-) is unchanged.
 
+### Added
+
+- Windows: a key record's repeat count is read, from the console
+  (`wRepeatCount`) and from win32-input-mode (`Rc`): a key down that counts N
+  times is its press (or repeat) and N-1 `KeyEventKind::Repeat` events, made as
+  they are read. A release is one release whatever its count, and an Alt code's
+  character is typed once.
+
 ### Fixed
 
 - A bracketed paste with win32-input-mode on (`Mode::Win32Input`) no longer

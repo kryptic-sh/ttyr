@@ -88,9 +88,9 @@ enum Dispatched {
 
 /// Windows Terminal's win32-input-mode key record,
 /// `CSI Vk ; Sc ; Uc ; Kd ; Cs ; Rc _`, each field a number and 0 when left
-/// out. The repeat count (`Rc`) is not read: Windows Terminal sends a held
-/// key as more records, which [`ConsoleKeys`](crate::event::console) reads as
-/// repeats.
+/// out. Windows Terminal sends a held key as more records, which
+/// [`ConsoleKeys`](crate::event::console) reads as repeats, and a repeat
+/// count (`Rc`) above 1 as that many.
 fn console_record(params: &Params) -> Option<KeyRecord> {
     if params.len() > 6 || params.iter().any(|values| values.len() > 1) {
         return None;
@@ -115,6 +115,7 @@ fn console_record(params: &Params) -> Option<KeyRecord> {
             _ => return None,
         },
         state,
+        repeat: field(5)?,
     })
 }
 

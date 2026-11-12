@@ -34,6 +34,9 @@ pub struct KeyRecord {
     pub down: bool,
     /// The modifier and lock state (`dwControlKeyState`).
     pub state: u32,
+    /// How many times the key typed, held down (`wRepeatCount`); 0 is
+    /// read as 1.
+    pub repeat: u16,
 }
 
 impl KeyRecord {
@@ -149,17 +152,33 @@ impl ConsoleKeys {
         Some(single_lower(c).unwrap_or(c))
     }
 
-    /// The key events `record` is: [`ConsoleKeys::key`]'s, and after an Alt
-    /// code's character its release. The console makes Alt codes itself for
-    /// characters the keyboard layout lacks, pasted or sent by a terminal,
-    /// and no record releases what they type.
-    pub fn events(&mut self, record: &KeyRecord) -> impl Iterator<Item = KeyEvent> + use<> {
-        let event = self.key(record);
-        let release = event
+    /// The key events `record` is: [`ConsoleKeys::key`]'s; for a key down
+    /// the record counts more than once (`repeat`), a repeat for each time
+    /// after the first; and after an Alt code's character its release. The
+    /// console makes Alt codes itself for characters the keyboard layout
+    /// lacks, pasted or sent by a terminal, and no record releases what
+    /// they type.
+    pub fn events(&mut self, record: &KeyRecord) -> KeyEvents {
+        let first = self.key(record);
+        let alt_code = is_alt_code(record);
+        let repeat = first
             .as_ref()
-            .filter(|_| is_alt_code(record))
+            .filter(|_| record.down && !alt_code)
+            .map(|event| event.clone().with_kind(KeyEventKind::Repeat));
+        let release = first
+            .as_ref()
+            .filter(|_| alt_code)
             .map(|press| press.clone().with_kind(KeyEventKind::Release));
-        event.into_iter().chain(release)
+        KeyEvents {
+            first,
+            repeats: if repeat.is_some() {
+                record.repeat.saturating_sub(1)
+            } else {
+                0
+            },
+            repeat,
+            release,
+        }
     }
 
     /// The character a text record's `unit` completes (see
@@ -319,6 +338,33 @@ impl ConsoleKeys {
     /// before it.
     fn typed(&mut self, unit: u16) -> Option<Key> {
         self.text(unit).map(Key::Typed)
+    }
+}
+
+/// The key events one record is, in order: see [`ConsoleKeys::events`].
+/// Made as they are taken, so a record's repeat count costs nothing until
+/// its repeats are read.
+#[derive(Debug, Clone, Default)]
+pub struct KeyEvents {
+    first: Option<KeyEvent>,
+    /// The repeat that follows the first event, `repeats` times.
+    repeat: Option<KeyEvent>,
+    repeats: u16,
+    release: Option<KeyEvent>,
+}
+
+impl Iterator for KeyEvents {
+    type Item = KeyEvent;
+
+    fn next(&mut self) -> Option<KeyEvent> {
+        if let Some(first) = self.first.take() {
+            return Some(first);
+        }
+        if self.repeats > 0 {
+            self.repeats -= 1;
+            return self.repeat.clone();
+        }
+        self.release.take()
     }
 }
 

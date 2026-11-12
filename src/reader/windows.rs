@@ -155,6 +155,7 @@ impl Source {
                         unit,
                         down: key.bKeyDown != 0,
                         state: key.dwControlKeyState,
+                        repeat: key.wRepeatCount,
                     };
                     if vt_input || record.is_text() {
                         // The terminal's bytes, one unit per key down.
