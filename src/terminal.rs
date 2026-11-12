@@ -42,10 +42,10 @@ pub struct WindowSize {
     /// Rows.
     pub rows: u16,
     /// The width in pixels, or 0 where the terminal does not report it (on
-    /// Windows always: the console does not).
+    /// Windows, behind ConPTY: Windows Terminal and the like).
     pub width: u16,
     /// The height in pixels, or 0 where the terminal does not report it (on
-    /// Windows always: the console does not).
+    /// Windows, behind ConPTY: Windows Terminal and the like).
     pub height: u16,
 }
 

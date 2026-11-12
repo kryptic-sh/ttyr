@@ -157,8 +157,11 @@ as a decision, and the coverage that is still missing or cannot be tested.
   without a virtual key) reads as a legacy key with no release either.
 - **An Alt code's release is made up**: the console sends its character only
   with Alt's release, so ttyr reports a press and, at once, a release.
-- **`window_size` has no pixels on Windows**: the console does not report them
-  (`width` and `height` are 0).
+- **`window_size` has no pixels behind ConPTY**: conhost reports its font (8×16
+  Consolas measured, 960×480 for 120×30, matching its client area), but under
+  ConPTY `GetCurrentConsoleFontEx` gives a width of 0 and the console window is
+  0×0, so Windows Terminal's pixels are 0. A program that needs them there asks
+  the terminal (`CSI 14 t`, not decoded yet; see phase 02).
 - **AltGr pressed alone is left Ctrl and right Alt**: the console sends a record
   for the left Ctrl it makes up for AltGr, so a lone AltGr is
   `Modifier(LeftControl)` and `Modifier(RightAlt)`, pressed and released, not

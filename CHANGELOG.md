@@ -24,6 +24,10 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- Windows: `terminal::window_size` (and `TtyrBackend::window_size`) reports
+  pixels in conhost, as the cells times the console's font size
+  (`GetCurrentConsoleFontEx`). Behind ConPTY (Windows Terminal and other hosts)
+  the console has no font to report, and the pixels stay 0.
 - Windows: the modifier and lock keys pressed alone are their own key events, as
   kitty reports them with flag 8, where they were dropped: Shift, Ctrl, Alt and
   the Windows keys as `KeyCode::Modifier` (left and right from the scan code,

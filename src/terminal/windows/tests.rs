@@ -8,7 +8,10 @@ use windows_sys::Win32::System::Console::{
     ENABLE_WINDOW_INPUT,
 };
 
-use super::{Console, console_mode, disable_raw_mode, enable_raw_mode, is_raw_mode_enabled, size};
+use super::{
+    Console, console_mode, disable_raw_mode, enable_raw_mode, is_raw_mode_enabled, size,
+    window_size,
+};
 use crate::terminal::{Mode, MouseTracking, disable, enable, restore};
 use crate::test_console::console;
 
@@ -46,6 +49,17 @@ fn the_size_is_the_windows() {
     let _console = console();
     let (columns, rows) = size().unwrap();
     assert!(columns > 0 && rows > 0, "{columns}x{rows}");
+    // In pixels, a whole number of cells of one font size each way, or
+    // none at all behind ConPTY.
+    let size = window_size().unwrap();
+    assert_eq!((size.columns, size.rows), (columns, rows));
+    let pixels = (size.width, size.height);
+    let cell = (size.width / columns, size.height / rows);
+    assert!(
+        pixels == (0, 0)
+            || (cell.0 > 0 && cell.1 > 0 && pixels == (cell.0 * columns, cell.1 * rows)),
+        "{size:?}"
+    );
 }
 
 #[test]

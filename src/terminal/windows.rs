@@ -11,10 +11,11 @@ use windows_sys::Win32::Storage::FileSystem::{
     CreateFileW, FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING,
 };
 use windows_sys::Win32::System::Console::{
-    CONSOLE_MODE, CONSOLE_SCREEN_BUFFER_INFO, ENABLE_ECHO_INPUT, ENABLE_EXTENDED_FLAGS,
-    ENABLE_LINE_INPUT, ENABLE_MOUSE_INPUT, ENABLE_PROCESSED_INPUT, ENABLE_QUICK_EDIT_MODE,
-    ENABLE_VIRTUAL_TERMINAL_INPUT, ENABLE_VIRTUAL_TERMINAL_PROCESSING, ENABLE_WINDOW_INPUT,
-    GetConsoleMode, GetConsoleScreenBufferInfo, SetConsoleMode,
+    CONSOLE_FONT_INFOEX, CONSOLE_MODE, CONSOLE_SCREEN_BUFFER_INFO, ENABLE_ECHO_INPUT,
+    ENABLE_EXTENDED_FLAGS, ENABLE_LINE_INPUT, ENABLE_MOUSE_INPUT, ENABLE_PROCESSED_INPUT,
+    ENABLE_QUICK_EDIT_MODE, ENABLE_VIRTUAL_TERMINAL_INPUT, ENABLE_VIRTUAL_TERMINAL_PROCESSING,
+    ENABLE_WINDOW_INPUT, GetConsoleMode, GetConsoleScreenBufferInfo, GetCurrentConsoleFontEx,
+    SetConsoleMode,
 };
 
 #[cfg(test)]
@@ -209,21 +210,50 @@ pub fn size() -> io::Result<(u16, u16)> {
     Ok((size.columns, size.rows))
 }
 
-/// The console's size in cells. The console does not say its pixels.
+/// The console's size in cells, and in pixels where the console draws with
+/// a font of its own (conhost): see [`window_size_of`].
 pub fn window_size() -> io::Result<WindowSize> {
     window_size_of(open_console("CONOUT$")?.as_handle())
 }
 
-/// The size of the window onto the screen buffer `output`.
+/// The size of the window onto the screen buffer `output`: its cells, and
+/// its pixels as the cells times the console's font size. Behind ConPTY
+/// (Windows Terminal, another terminal hosting the console) the console has
+/// no font of its own and reports a width of 0, so the pixels are 0, as
+/// where a Unix terminal does not report them.
 pub fn window_size_of(output: BorrowedHandle<'_>) -> io::Result<WindowSize> {
     let window = screen_buffer_info(output)?.srWindow;
     let cells = |low: i16, high: i16| u16::try_from(i32::from(high) - i32::from(low) + 1);
+    let columns = cells(window.Left, window.Right).map_err(io::Error::other)?;
+    let rows = cells(window.Top, window.Bottom).map_err(io::Error::other)?;
+    let (width, height) = match font_size(output) {
+        Some((x, y)) => (columns.saturating_mul(x), rows.saturating_mul(y)),
+        None => (0, 0),
+    };
     Ok(WindowSize {
-        columns: cells(window.Left, window.Right).map_err(io::Error::other)?,
-        rows: cells(window.Top, window.Bottom).map_err(io::Error::other)?,
-        width: 0,
-        height: 0,
+        columns,
+        rows,
+        width,
+        height,
     })
+}
+
+/// The console's font size in pixels, a cell's width and height, or `None`
+/// where it has none to report: the call fails, or a side is 0 (ConPTY's).
+fn font_size(output: BorrowedHandle<'_>) -> Option<(u16, u16)> {
+    // SAFETY: CONSOLE_FONT_INFOEX is plain data; zero is a valid value of
+    // every field.
+    let mut font: CONSOLE_FONT_INFOEX = unsafe { std::mem::zeroed() };
+    font.cbSize = u32::try_from(std::mem::size_of::<CONSOLE_FONT_INFOEX>()).ok()?;
+    // SAFETY: the handle is borrowed, so open; `font` is a valid out
+    // pointer whose size is in `cbSize`. FALSE asks for the font at the
+    // window's current size, not a maximized window's.
+    if unsafe { GetCurrentConsoleFontEx(raw(output), 0, &mut font) } == 0 {
+        return None;
+    }
+    let x = u16::try_from(font.dwFontSize.X).ok().filter(|&x| x > 0)?;
+    let y = u16::try_from(font.dwFontSize.Y).ok().filter(|&y| y > 0)?;
+    Some((x, y))
 }
 
 /// The screen buffer row at the window's top, which mouse records count
