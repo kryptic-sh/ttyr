@@ -1358,8 +1358,8 @@ const CORPUS: &[&[u8]] = &[
 fn a_sequence_split_anywhere_reads_the_same() {
     let whole: Vec<u8> = CORPUS.concat();
     let expected = decode(&whole);
-    // "é😀" is two keys, and the Alt code a press and a release.
-    assert_eq!(expected.len(), CORPUS.len() + 2, "{expected:?}");
+    // "é😀" is two keys, and the Alt code a press, its release and Alt's.
+    assert_eq!(expected.len(), CORPUS.len() + 3, "{expected:?}");
     for split in 1..whole.len() {
         let mut decoder = Decoder::new();
         decoder.feed(&whole[..split]);
@@ -1440,8 +1440,17 @@ fn win32_input_mode_records() {
             Event::Unknown(b"\x1B[65;30;97;2;0;1_".to_vec()),
         ]
     );
-    // A modifier key's own record is no event.
-    assert_eq!(decode(b"\x1B[16;42;0;1;16;1_"), []);
+    // A modifier key's own record is that key, as kitty's flag 8 has it.
+    assert_eq!(
+        decode(b"\x1B[16;42;0;1;16;1_"),
+        [Event::Key(
+            KeyEvent::new(
+                KeyCode::Modifier(ModifierKeyCode::LeftShift),
+                KeyModifiers::SHIFT
+            )
+            .with_encoding(KeyEncoding::Windows)
+        )]
+    );
 }
 
 #[test]
@@ -1519,15 +1528,20 @@ fn win32_input_mode_text_records_are_the_terminals_bytes() {
 
 #[test]
 fn win32_input_mode_alt_code_is_pressed_and_released() {
-    // Alt down, keypad 2 3 3, Alt up with é: the press and its release.
+    // Alt down, keypad 2 3 3, Alt up with é: Alt's press, é's press and
+    // its release, and Alt's release.
     let records = b"\x1B[18;56;0;1;2;1_\x1B[98;80;0;1;2;1_\x1B[98;80;0;0;2;1_\x1B[99;81;0;1;2;1_\x1B[99;81;0;0;2;1_\x1B[99;81;0;1;2;1_\x1B[99;81;0;0;2;1_\x1B[18;56;233;0;0;1_";
-    let e =
-        KeyEvent::new(KeyCode::Char('é'), KeyModifiers::NONE).with_encoding(KeyEncoding::Windows);
+    let windows =
+        |key, modifiers| KeyEvent::new(key, modifiers).with_encoding(KeyEncoding::Windows);
+    let alt = KeyCode::Modifier(ModifierKeyCode::LeftAlt);
+    let e = windows(KeyCode::Char('é'), KeyModifiers::NONE);
     assert_eq!(
         decode(records),
         [
+            Event::Key(windows(alt, KeyModifiers::ALT)),
             Event::Key(e.clone()),
             Event::Key(e.with_kind(KeyEventKind::Release)),
+            Event::Key(windows(alt, KeyModifiers::NONE).with_kind(KeyEventKind::Release)),
         ]
     );
 }

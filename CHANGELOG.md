@@ -24,6 +24,16 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- Windows: the modifier and lock keys pressed alone are their own key events, as
+  kitty reports them with flag 8, where they were dropped: Shift, Ctrl, Alt and
+  the Windows keys as `KeyCode::Modifier` (left and right from the scan code,
+  `ENHANCED_KEY` or the sided virtual-key code; the Windows keys as Super), Caps
+  Lock, Num Lock and Scroll Lock as `KeyCode::CapsLock`, `NumLock` and
+  `ScrollLock`, each pressed, repeated while held and released, with the
+  modifiers as the console reported them. The record that ends an Alt code is
+  now the character's press and release, then Alt's release, so Alt's press is
+  always released. AltGr arrives as left Ctrl and right Alt, as the console
+  reports it.
 - Windows: a key record's repeat count is read, from the console
   (`wRepeatCount`) and from win32-input-mode (`Rc`): a key down that counts N
   times is its press (or repeat) and N-1 `KeyEventKind::Repeat` events, made as

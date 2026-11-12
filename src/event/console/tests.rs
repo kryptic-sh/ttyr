@@ -70,7 +70,8 @@ fn a_records_repeat_count_is_that_many_keys() {
         repeat: 3,
         ..record(VK_MENU, unit('é'), false, 0)
     };
-    assert_eq!(kinds(&mut keys, alt_code), [Press, Release]);
+    // Its own release, then Alt's.
+    assert_eq!(kinds(&mut keys, alt_code), [Press, Release, Release]);
 }
 
 #[test]
@@ -303,8 +304,17 @@ fn an_alt_code_types_its_character_on_alts_release() {
         record(VK_MENU, unit('é'), false, 0),
     ];
     let events: Vec<_> = records.iter().flat_map(|r| keys.events(r)).collect();
+    let alt = KeyCode::Modifier(ModifierKeyCode::LeftAlt);
     let e = key(KeyCode::Char('é'), KeyModifiers::NONE);
-    assert_eq!(events, [e.clone(), e.with_kind(KeyEventKind::Release)]);
+    assert_eq!(
+        events,
+        [
+            key(alt, KeyModifiers::ALT),
+            e.clone(),
+            e.with_kind(KeyEventKind::Release),
+            key(alt, KeyModifiers::NONE).with_kind(KeyEventKind::Release),
+        ]
+    );
 }
 
 #[test]
@@ -312,7 +322,14 @@ fn only_an_alt_code_brings_its_own_release() {
     let mut keys = ConsoleKeys::default();
     let a: Vec<_> = keys.events(&record(0x41, unit('a'), true, 0)).collect();
     assert_eq!(a, [key(KeyCode::Char('a'), KeyModifiers::NONE)]);
-    assert_eq!(keys.events(&record(VK_SHIFT, 0, true, SHIFT)).count(), 0);
+    let shift: Vec<_> = keys.events(&record(VK_SHIFT, 0, true, SHIFT)).collect();
+    assert_eq!(
+        shift,
+        [key(
+            KeyCode::Modifier(ModifierKeyCode::LeftShift),
+            KeyModifiers::SHIFT
+        )]
+    );
 }
 
 #[test]
@@ -331,12 +348,69 @@ fn a_record_with_no_key_is_text() {
 }
 
 #[test]
-fn modifier_and_lock_keys_alone_are_not_events() {
-    for vk in [
-        VK_SHIFT, VK_CONTROL, VK_MENU, VK_LWIN, VK_RWIN, VK_CAPITAL, VK_NUMLOCK, VK_SCROLL,
+fn modifier_and_lock_keys_alone_are_their_own_keys() {
+    use ModifierKeyCode::{
+        LeftAlt, LeftControl, LeftShift, LeftSuper, RightAlt, RightControl, RightShift, RightSuper,
+    };
+    let scanned = |vk, scan, state| {
+        ConsoleKeys::default()
+            .key(&KeyRecord {
+                scan,
+                ..record(vk, 0, true, state)
+            })
+            .map(|event| event.key)
+    };
+    let modifier = |m| Some(KeyCode::Modifier(m));
+    // Shift: left and right by the scan code (0x2A and 0x36, set 1).
+    assert_eq!(scanned(VK_SHIFT, 0x2A, SHIFT), modifier(LeftShift));
+    assert_eq!(scanned(VK_SHIFT, 0x36, SHIFT), modifier(RightShift));
+    // Ctrl and Alt: the right keys are enhanced.
+    assert_eq!(scanned(VK_CONTROL, 0x1D, LEFT_CTRL), modifier(LeftControl));
+    assert_eq!(
+        scanned(VK_CONTROL, 0x1D, RIGHT_CTRL_PRESSED | ENHANCED_KEY),
+        modifier(RightControl)
+    );
+    assert_eq!(scanned(VK_MENU, 0x38, LEFT_ALT), modifier(LeftAlt));
+    assert_eq!(
+        scanned(VK_MENU, 0x38, RIGHT_ALT_PRESSED | ENHANCED_KEY),
+        modifier(RightAlt)
+    );
+    // The left and right virtual-key codes name their side.
+    for (vk, m) in [
+        (VK_LSHIFT, LeftShift),
+        (VK_RSHIFT, RightShift),
+        (VK_LCONTROL, LeftControl),
+        (VK_RCONTROL, RightControl),
+        (VK_LMENU, LeftAlt),
+        (VK_RMENU, RightAlt),
+        (VK_LWIN, LeftSuper),
+        (VK_RWIN, RightSuper),
     ] {
-        assert_eq!(press(vk, 0, 0), None, "{vk:#x}");
+        assert_eq!(scanned(vk, 0, 0), modifier(m), "{vk:#x}");
     }
+    assert_eq!(scanned(VK_CAPITAL, 0x3A, 0), Some(KeyCode::CapsLock));
+    assert_eq!(scanned(VK_NUMLOCK, 0x45, 0), Some(KeyCode::NumLock));
+    assert_eq!(scanned(VK_SCROLL, 0x46, 0), Some(KeyCode::ScrollLock));
+    // Pressed, held (the console repeats it) and released, with no
+    // character and the modifiers as the console reported them.
+    let mut keys = ConsoleKeys::default();
+    let kinds: Vec<_> = [true, true, false]
+        .map(|down| {
+            let state = if down { SHIFT } else { 0 };
+            keys.key(&record(VK_SHIFT, 0, down, state)).unwrap()
+        })
+        .into_iter()
+        .map(|event| (event.kind, event.modifiers, event.shifted, event.text))
+        .collect();
+    use KeyEventKind::{Press, Release, Repeat};
+    assert_eq!(
+        kinds,
+        [
+            (Press, KeyModifiers::SHIFT, None, None),
+            (Repeat, KeyModifiers::SHIFT, None, None),
+            (Release, KeyModifiers::NONE, None, None),
+        ]
+    );
 }
 
 #[test]

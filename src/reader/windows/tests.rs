@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use crate::event::{
     Event, KeyCode, KeyEncoding, KeyEvent, KeyEventKind, KeyModifiers, KeyboardEnhancementFlags,
-    MouseButton, MouseEventKind, Report,
+    ModifierKeyCode, MouseButton, MouseEventKind, Report,
 };
 use crate::reader::Reader;
 use crate::reader::shared_tests::{LONG, Terminal, legacy, shared_tests};
@@ -188,12 +188,24 @@ fn an_alt_code_reads_as_a_press_and_a_release() {
     }
     records.push(key(0x12, 0xE9, false, 0)); // 0xE9 is é.
     inject(&records);
+    let alt = windows_key(
+        KeyCode::Modifier(ModifierKeyCode::LeftAlt),
+        KeyModifiers::ALT,
+    );
+    assert_eq!(reader.read().unwrap(), Event::Key(alt));
     let e = windows_key(KeyCode::Char('é'), KeyModifiers::NONE);
     assert_eq!(reader.read().unwrap(), Event::Key(e.clone()));
     assert_eq!(
         reader.read().unwrap(),
         Event::Key(e.with_kind(KeyEventKind::Release))
     );
+    // Alt's own release, the same record's.
+    let alt_up = windows_key(
+        KeyCode::Modifier(ModifierKeyCode::LeftAlt),
+        KeyModifiers::NONE,
+    )
+    .with_kind(KeyEventKind::Release);
+    assert_eq!(reader.read().unwrap(), Event::Key(alt_up));
     assert!(!reader.poll(Duration::ZERO).unwrap());
 }
 

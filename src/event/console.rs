@@ -5,12 +5,13 @@
 //! built and tested on every platform.
 //!
 //! Where crossterm reads these records it drops what ttyr keeps: a key's
-//! release and repeat, Ctrl with Enter and Backspace, the keypad, and the
-//! back and forward mouse buttons.
+//! release and repeat, Ctrl with Enter and Backspace, the keypad, the
+//! modifier and lock keys pressed alone, and the back and forward mouse
+//! buttons.
 
 use super::key::{single_lower, single_upper, typed_char, typed_with_shift};
 use super::{KeyCode, KeyEncoding, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
-use crate::event::MediaKeyCode;
+use crate::event::{MediaKeyCode, ModifierKeyCode};
 
 // Read only by the Windows reader, and tested everywhere.
 #[cfg(any(windows, test))]
@@ -92,6 +93,17 @@ const VK_F1: u16 = 0x70;
 const VK_F24: u16 = 0x87;
 const VK_NUMLOCK: u16 = 0x90;
 const VK_SCROLL: u16 = 0x91;
+const VK_LSHIFT: u16 = 0xA0;
+const VK_RSHIFT: u16 = 0xA1;
+const VK_LCONTROL: u16 = 0xA2;
+const VK_RCONTROL: u16 = 0xA3;
+const VK_LMENU: u16 = 0xA4;
+const VK_RMENU: u16 = 0xA5;
+
+/// Right Shift's scan code (PC scan code set 1, which the console reports);
+/// the console gives both Shift keys as VK_SHIFT, and right Shift is not an
+/// enhanced key.
+const SCAN_RIGHT_SHIFT: u16 = 0x36;
 const VK_VOLUME_MUTE: u16 = 0xAD;
 const VK_VOLUME_DOWN: u16 = 0xAE;
 const VK_VOLUME_UP: u16 = 0xAF;
@@ -154,13 +166,19 @@ impl ConsoleKeys {
 
     /// The key events `record` is: [`ConsoleKeys::key`]'s; for a key down
     /// the record counts more than once (`repeat`), a repeat for each time
-    /// after the first; and after an Alt code's character its release. The
-    /// console makes Alt codes itself for characters the keyboard layout
-    /// lacks, pasted or sent by a terminal, and no record releases what
-    /// they type.
+    /// after the first; and after an Alt code's character its release, then
+    /// Alt's own. The console makes Alt codes itself for characters the
+    /// keyboard layout lacks, pasted or sent by a terminal, and no record
+    /// releases what they type: the one record is the character and Alt's
+    /// release both.
     pub fn events(&mut self, record: &KeyRecord) -> KeyEvents {
         let first = self.key(record);
         let alt_code = is_alt_code(record);
+        let alt_release = if alt_code {
+            self.key(&KeyRecord { unit: 0, ..*record })
+        } else {
+            None
+        };
         let repeat = first
             .as_ref()
             .filter(|_| record.down && !alt_code)
@@ -178,6 +196,7 @@ impl ConsoleKeys {
             },
             repeat,
             release,
+            alt_release,
         }
     }
 
@@ -200,9 +219,11 @@ impl ConsoleKeys {
     }
 
     /// The key event `record` is, or `None` for a record that is not one on
-    /// its own: a modifier or lock key (Shift, Ctrl, Alt, the Windows keys,
-    /// Caps Lock, Num Lock, Scroll Lock), a digit typed on the keypad as part
-    /// of an Alt code, or half of a surrogate pair.
+    /// its own: a digit typed on the keypad as part of an Alt code, or half
+    /// of a surrogate pair. A modifier or lock key pressed alone (Shift,
+    /// Ctrl, Alt, the Windows keys, Caps Lock, Num Lock, Scroll Lock) is
+    /// its own key, as kitty reports it with flag 8, the modifiers as the
+    /// console reported them.
     pub fn key(&mut self, record: &KeyRecord) -> Option<KeyEvent> {
         let key = self.code(record)?;
         // An Alt code's character comes with Alt's release, but is typed.
@@ -250,8 +271,15 @@ impl ConsoleKeys {
         let shift = record.state & SHIFT_PRESSED != 0;
         let code = match record.vk {
             _ if is_alt_code(record) => return self.typed(record.unit),
-            VK_SHIFT | VK_CONTROL | VK_MENU | VK_LWIN | VK_RWIN | VK_CAPITAL | VK_NUMLOCK
-            | VK_SCROLL => return None,
+            VK_SHIFT
+            | VK_CONTROL
+            | VK_MENU
+            | VK_LWIN
+            | VK_RWIN
+            | VK_CAPITAL
+            | VK_NUMLOCK
+            | VK_SCROLL
+            | VK_LSHIFT..=VK_RMENU => return modifier_key(record).map(Key::Code),
             VK_NUMPAD0..=VK_NUMPAD9 if is_alt_code_digit(record.state) => return None,
             VK_BACK => KeyCode::Backspace,
             VK_TAB if shift => KeyCode::BackTab,
@@ -351,6 +379,8 @@ pub struct KeyEvents {
     repeat: Option<KeyEvent>,
     repeats: u16,
     release: Option<KeyEvent>,
+    /// Alt's release, after an Alt code's character.
+    alt_release: Option<KeyEvent>,
 }
 
 impl Iterator for KeyEvents {
@@ -364,8 +394,35 @@ impl Iterator for KeyEvents {
             self.repeats -= 1;
             return self.repeat.clone();
         }
-        self.release.take()
+        self.release.take().or_else(|| self.alt_release.take())
     }
+}
+
+/// A modifier or lock key: left from right by the scan code for Shift, and
+/// by `ENHANCED_KEY` for Ctrl and Alt, whose right keys are enhanced.
+fn modifier_key(record: &KeyRecord) -> Option<KeyCode> {
+    use ModifierKeyCode::{
+        LeftAlt, LeftControl, LeftShift, LeftSuper, RightAlt, RightControl, RightShift, RightSuper,
+    };
+    let enhanced = record.state & ENHANCED_KEY != 0;
+    let key = match record.vk {
+        VK_SHIFT if record.scan == SCAN_RIGHT_SHIFT => RightShift,
+        VK_RSHIFT => RightShift,
+        VK_SHIFT | VK_LSHIFT => LeftShift,
+        VK_CONTROL if enhanced => RightControl,
+        VK_RCONTROL => RightControl,
+        VK_CONTROL | VK_LCONTROL => LeftControl,
+        VK_MENU if enhanced => RightAlt,
+        VK_RMENU => RightAlt,
+        VK_MENU | VK_LMENU => LeftAlt,
+        VK_LWIN => LeftSuper,
+        VK_RWIN => RightSuper,
+        VK_CAPITAL => return Some(KeyCode::CapsLock),
+        VK_NUMLOCK => return Some(KeyCode::NumLock),
+        VK_SCROLL => return Some(KeyCode::ScrollLock),
+        _ => return None,
+    };
+    Some(KeyCode::Modifier(key))
 }
 
 /// A key: by code, or by the character it typed.

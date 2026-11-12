@@ -158,11 +158,11 @@ as a decision, and the coverage that is still missing or cannot be tested.
   with Alt's release, so ttyr reports a press and, at once, a release.
 - **`window_size` has no pixels on Windows**: the console does not report them
   (`width` and `height` are 0).
-- **A modifier or lock key's own record is dropped** (`ConsoleKeys::key`):
-  Shift, Ctrl, Alt, the Windows keys and the locks pressed alone are no event,
-  as in crossterm, where kitty reports them with flag 8. A consumer that wants
-  them gets a `KeyCode::Modifier` mapping (left and right from the scan code or
-  `ENHANCED_KEY`).
+- **AltGr pressed alone is left Ctrl and right Alt**: the console sends a record
+  for the left Ctrl it makes up for AltGr, so a lone AltGr is
+  `Modifier(LeftControl)` and `Modifier(RightAlt)`, pressed and released, not
+  kitty's `IsoLevel3Shift`. Telling AltGr's Ctrl from a real one needs the
+  record's timing or the layout's AltGr flag (`KLLF_ALTGR`), not read.
 - **Ctrl with a non-letter key that has a control code reads the control code**,
   not the layout: on a layout where `[` is not where VK_OEM_4 sits, Ctrl+that
   key still reads as Ctrl+\[ when the console gives 0x1B. Kept on purpose:
