@@ -244,11 +244,12 @@ pub fn layout_char(vk: u16) -> Option<char> {
     let layout = unsafe { GetKeyboardLayout(thread) };
     // SAFETY: plain values in; the layout handle is only read.
     let mapped = unsafe { MapVirtualKeyExW(u32::from(vk), MAPVK_VK_TO_CHAR, layout) };
-    // A dead key has the top bit set (winuser.h's MapVirtualKey docs).
-    if mapped & 0x8000_0000 != 0 {
+    // 0 for no character; a dead key has the top bit set (winuser.h's
+    // MapVirtualKey docs).
+    if mapped == 0 || mapped & 0x8000_0000 != 0 {
         return None;
     }
-    char::from_u32(mapped).filter(|&c| c != ' ')
+    char::from_u32(mapped)
 }
 
 /// The waker's side: the event the reader waits on.
