@@ -129,12 +129,16 @@ const VK_OEM_7: u16 = 0xDE;
 pub type Layout = fn(u16) -> Option<char>;
 
 /// Turns console key records into key events, keeping what spans records:
-/// the key held down (so a second down is a repeat) and the first half of a
-/// surrogate pair.
+/// the keys down (so a second down is a repeat, and a release is of a key
+/// that was pressed) and the first half of a surrogate pair.
 #[derive(Debug, Clone, Default)]
 pub struct ConsoleKeys {
-    /// The virtual-key code of the key down and not yet up.
+    /// The virtual-key code of the key last pressed and not yet up, whose
+    /// next down is a repeat.
     held: Option<u16>,
+    /// Every key down, by virtual-key code, the modifiers by their sided
+    /// codes (`VK_LSHIFT` to `VK_RMENU`).
+    down: KeysDown,
     /// A high surrogate waiting for its low half.
     surrogate: Option<u16>,
     /// The layout the records were typed on, where it can be read: only
@@ -172,6 +176,8 @@ impl ConsoleKeys {
     /// releases what they type: the one record is the character and Alt's
     /// release both.
     pub fn events(&mut self, record: &KeyRecord) -> KeyEvents {
+        let mut stale = self.stale_modifiers(record);
+        stale.reverse();
         let first = self.key(record);
         let alt_code = is_alt_code(record);
         let alt_release = if alt_code {
@@ -188,6 +194,7 @@ impl ConsoleKeys {
             .filter(|_| alt_code)
             .map(|press| press.clone().with_kind(KeyEventKind::Release));
         KeyEvents {
+            stale,
             first,
             repeats: if repeat.is_some() {
                 record.repeat.saturating_sub(1)
@@ -219,18 +226,23 @@ impl ConsoleKeys {
     }
 
     /// The key event `record` is, or `None` for a record that is not one on
-    /// its own: a digit typed on the keypad as part of an Alt code, or half
-    /// of a surrogate pair. A modifier or lock key pressed alone (Shift,
-    /// Ctrl, Alt, the Windows keys, Caps Lock, Num Lock, Scroll Lock) is
-    /// its own key, as kitty reports it with flag 8, the modifiers as the
-    /// console reported them.
+    /// its own: a digit typed on the keypad as part of an Alt code, half of
+    /// a surrogate pair, or the release of a key not pressed since these
+    /// records began (Windows Terminal sends the release of a paste
+    /// shortcut whose press it kept). A modifier or lock key pressed alone
+    /// (Shift, Ctrl, Alt, the Windows keys, Caps Lock, Num Lock, Scroll
+    /// Lock) is its own key, as kitty reports it with flag 8, the modifiers
+    /// as the console reported them.
     pub fn key(&mut self, record: &KeyRecord) -> Option<KeyEvent> {
+        let record = &self.sided(record);
+        // Before the kind, so that a record that is no key (half a
+        // surrogate pair, an Alt code's digit) is not counted as down.
         let key = self.code(record)?;
         // An Alt code's character comes with Alt's release, but is typed.
         let kind = if is_alt_code(record) {
             KeyEventKind::Press
         } else {
-            self.kind(record)
+            self.kind(record)?
         };
         let mut modifiers = modifiers(record.state);
         if alt_gr_typed(record) {
@@ -250,19 +262,84 @@ impl ConsoleKeys {
         Some(event.with_encoding(KeyEncoding::Windows))
     }
 
-    /// Press, repeat or release, from whether the same key is held.
-    fn kind(&mut self, record: &KeyRecord) -> KeyEventKind {
+    /// Press, repeat or release, from whether the same key is held; `None`
+    /// for the release of a key that is not down.
+    fn kind(&mut self, record: &KeyRecord) -> Option<KeyEventKind> {
         if !record.down {
+            if !self.down.take(record.vk) {
+                return None;
+            }
             if self.held == Some(record.vk) {
                 self.held = None;
             }
-            return KeyEventKind::Release;
+            return Some(KeyEventKind::Release);
         }
-        if self.held.replace(record.vk) == Some(record.vk) {
+        self.down.put(record.vk);
+        Some(if self.held.replace(record.vk) == Some(record.vk) {
             KeyEventKind::Repeat
         } else {
             KeyEventKind::Press
-        }
+        })
+    }
+
+    /// The releases of the modifiers ttyr has down that `record`'s state
+    /// says are up, the record's own key aside: Windows Terminal keeps an
+    /// Alt code's Alt release, and sends only a text record for its
+    /// character. Shift's state bit is either side's; the Windows keys have
+    /// none, and stay down until their own release.
+    fn stale_modifiers(&mut self, record: &KeyRecord) -> Vec<KeyEvent> {
+        let own = self.sided(record).vk;
+        let state = record.state;
+        let up = |bit: u32| state & bit == 0;
+        let gone: Vec<u16> = [
+            (VK_LSHIFT, up(SHIFT_PRESSED)),
+            (VK_RSHIFT, up(SHIFT_PRESSED)),
+            (VK_LCONTROL, up(LEFT_CTRL_PRESSED)),
+            (VK_RCONTROL, up(RIGHT_CTRL_PRESSED)),
+            (VK_LMENU, up(LEFT_ALT_PRESSED)),
+            (VK_RMENU, up(RIGHT_ALT_PRESSED)),
+        ]
+        .into_iter()
+        .filter(|&(vk, up)| up && vk != own && self.down.has(vk))
+        .map(|(vk, _)| vk)
+        .collect();
+        gone.into_iter()
+            .filter_map(|vk| {
+                self.key(&KeyRecord {
+                    vk,
+                    scan: 0,
+                    unit: 0,
+                    down: false,
+                    state,
+                    repeat: 1,
+                })
+            })
+            .collect()
+    }
+
+    /// `record` with Shift, Ctrl and Alt by their sided codes: Shift by
+    /// the scan code, Ctrl and Alt by `ENHANCED_KEY`, the right keys' flag.
+    /// A release takes the side that is down where the flag says the other:
+    /// Windows Terminal releases AltGr's right Alt without `ENHANCED_KEY`.
+    fn sided(&self, record: &KeyRecord) -> KeyRecord {
+        let enhanced = record.state & ENHANCED_KEY != 0;
+        let (left, right, is_right) = match record.vk {
+            VK_SHIFT => (VK_LSHIFT, VK_RSHIFT, record.scan == SCAN_RIGHT_SHIFT),
+            VK_CONTROL => (VK_LCONTROL, VK_RCONTROL, enhanced),
+            VK_MENU => (VK_LMENU, VK_RMENU, enhanced),
+            _ => return *record,
+        };
+        let (side, other) = if is_right {
+            (right, left)
+        } else {
+            (left, right)
+        };
+        let vk = if !record.down && !self.down.has(side) && self.down.has(other) {
+            other
+        } else {
+            side
+        };
+        KeyRecord { vk, ..*record }
     }
 
     /// The key, by its virtual-key code where that names one, else by the
@@ -374,6 +451,9 @@ impl ConsoleKeys {
 /// its repeats are read.
 #[derive(Debug, Clone, Default)]
 pub struct KeyEvents {
+    /// The releases of modifiers the record's state says are up, in
+    /// reverse order: taken from the back.
+    stale: Vec<KeyEvent>,
     first: Option<KeyEvent>,
     /// The repeat that follows the first event, `repeats` times.
     repeat: Option<KeyEvent>,
@@ -387,6 +467,9 @@ impl Iterator for KeyEvents {
     type Item = KeyEvent;
 
     fn next(&mut self) -> Option<KeyEvent> {
+        if let Some(stale) = self.stale.pop() {
+            return Some(stale);
+        }
         if let Some(first) = self.first.take() {
             return Some(first);
         }
@@ -398,23 +481,19 @@ impl Iterator for KeyEvents {
     }
 }
 
-/// A modifier or lock key: left from right by the scan code for Shift, and
-/// by `ENHANCED_KEY` for Ctrl and Alt, whose right keys are enhanced.
+/// A modifier or lock key, Shift, Ctrl and Alt by their sided codes (see
+/// [`ConsoleKeys::sided`]).
 fn modifier_key(record: &KeyRecord) -> Option<KeyCode> {
     use ModifierKeyCode::{
         LeftAlt, LeftControl, LeftShift, LeftSuper, RightAlt, RightControl, RightShift, RightSuper,
     };
-    let enhanced = record.state & ENHANCED_KEY != 0;
     let key = match record.vk {
-        VK_SHIFT if record.scan == SCAN_RIGHT_SHIFT => RightShift,
+        VK_LSHIFT => LeftShift,
         VK_RSHIFT => RightShift,
-        VK_SHIFT | VK_LSHIFT => LeftShift,
-        VK_CONTROL if enhanced => RightControl,
+        VK_LCONTROL => LeftControl,
         VK_RCONTROL => RightControl,
-        VK_CONTROL | VK_LCONTROL => LeftControl,
-        VK_MENU if enhanced => RightAlt,
+        VK_LMENU => LeftAlt,
         VK_RMENU => RightAlt,
-        VK_MENU | VK_LMENU => LeftAlt,
         VK_LWIN => LeftSuper,
         VK_RWIN => RightSuper,
         VK_CAPITAL => return Some(KeyCode::CapsLock),
@@ -423,6 +502,36 @@ fn modifier_key(record: &KeyRecord) -> Option<KeyCode> {
         _ => return None,
     };
     Some(KeyCode::Modifier(key))
+}
+
+/// The keys down, a bit per virtual-key code (a byte's worth).
+#[derive(Debug, Clone, Copy, Default)]
+struct KeysDown([u64; 4]);
+
+impl KeysDown {
+    fn bit(vk: u16) -> Option<(usize, u64)> {
+        let vk = usize::from(u8::try_from(vk).ok()?);
+        Some((vk / 64, 1 << (vk % 64)))
+    }
+
+    fn has(&self, vk: u16) -> bool {
+        Self::bit(vk).is_some_and(|(word, bit)| self.0[word] & bit != 0)
+    }
+
+    fn put(&mut self, vk: u16) {
+        if let Some((word, bit)) = Self::bit(vk) {
+            self.0[word] |= bit;
+        }
+    }
+
+    /// Clears `vk`, and whether it was down.
+    fn take(&mut self, vk: u16) -> bool {
+        let was = self.has(vk);
+        if let Some((word, bit)) = Self::bit(vk) {
+            self.0[word] &= !bit;
+        }
+        was
+    }
 }
 
 /// A key: by code, or by the character it typed.
@@ -514,7 +623,7 @@ fn alt_gr_typed(record: &KeyRecord) -> bool {
 /// Whether the record ends an Alt code: Alt's release, with the character
 /// the code typed.
 const fn is_alt_code(record: &KeyRecord) -> bool {
-    record.vk == VK_MENU && !record.down && record.unit != 0
+    matches!(record.vk, VK_MENU | VK_LMENU | VK_RMENU) && !record.down && record.unit != 0
 }
 
 /// Whether a keypad digit is part of an Alt code: Alt held alone.

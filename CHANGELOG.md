@@ -34,10 +34,13 @@ All notable changes to this project are documented here. The format follows
   `ENHANCED_KEY` or the sided virtual-key code; the Windows keys as Super), Caps
   Lock, Num Lock and Scroll Lock as `KeyCode::CapsLock`, `NumLock` and
   `ScrollLock`, each pressed, repeated while held and released, with the
-  modifiers as the console reported them. The record that ends an Alt code is
-  now the character's press and release, then Alt's release, so Alt's press is
-  always released. AltGr arrives as left Ctrl and right Alt, as the console
-  reports it.
+  modifiers as the console reported them. Every press is released: a modifier's
+  release takes the side that is down (Windows Terminal releases AltGr's right
+  Alt without `ENHANCED_KEY`), a modifier the next record's state shows up is
+  released before that record's key (Windows Terminal keeps an Alt code's Alt
+  release), and the record that ends a conhost Alt code is the character's press
+  and release, then Alt's release where Alt was pressed. AltGr arrives as left
+  Ctrl and right Alt, as the console reports it.
 - Windows: a key record's repeat count is read, from the console
   (`wRepeatCount`) and from win32-input-mode (`Rc`): a key down that counts N
   times is its press (or repeat) and N-1 `KeyEventKind::Repeat` events, made as
@@ -46,6 +49,11 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- Windows: a key release with no press before it is dropped, where it was
+  reported as a release. Windows Terminal keeps the press of a paste shortcut
+  (Ctrl+Shift+V) and sends its release, so a program pairing presses with
+  releases saw a `v` released that was never pressed; a key held when the
+  `Reader` opened is the same.
 - A bracketed paste with win32-input-mode on (`Mode::Win32Input`) no longer
   carries raw key records in its text: ConPTY sends a pasted line break as
   Enter's records (`CSI 13 ; 28 ; 13 ; 1 ; 0 ; 1 _` and its release), which

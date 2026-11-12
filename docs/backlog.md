@@ -148,19 +148,12 @@ as a decision, and the coverage that is still missing or cannot be tested.
 
 ## Phase 07 in progress (Windows)
 
-- **AltGr on a non-US layout is not measured.** The keystroke runs (see
-  `docs/plan/07-windows.md`) could not switch Windows Terminal to a German
-  layout: Windows only switches a window to a layout in the user's input list,
-  which on the test machine holds US and the Japanese IME. Measuring it needs a
-  layout with AltGr added to the list for the run (Settings, a change to the
-  account's settings, so the owner's call) or a person on such a keyboard.
-  `alt_gr_typed` (`src/event/console.rs`) is tested only on hand-written
-  records. An Alt code typed on the keypad, and IME input, were not driven
-  either.
-- **Windows Terminal swallows a paste shortcut's press but not its release**:
-  with `Mode::Win32Input` on, Ctrl+Shift+V reads as Ctrl's and Shift's presses,
-  then the paste, then a release of `v` that had no press (measured). A program
-  that pairs presses with releases sees one release unpaired.
+- **Windows Terminal's Alt code is text with no release**: it keeps the keypad
+  digits and Alt's release, and sends the character as text records (no
+  virtual-key or scan code), so `é` from Alt+0233 reads as a legacy key with no
+  release (measured), where conhost's Alt code is a Windows key pressed and
+  released. Alt's press is released by the next key record, whose state has no
+  Alt (`ConsoleKeys::stale_modifiers`); with no key after it, Alt stays down.
 - **Focus records are read only with VT input off**, as crossterm reads them,
   although Microsoft documents `FOCUS_EVENT` as the console's internal. With VT
   input on they are dropped, so focus is reported once, by the terminal under

@@ -44,7 +44,11 @@ the terminal's own key handling as a keyboard's do (Windows Terminal from
 - conhost: real keystrokes arrive as console records, lone modifiers included,
   and its window losing and regaining focus gives `FocusLost` and `FocusGained`.
 
-Still to do:
+On a German layout (added to the input list for the run and removed after):
+AltGr+Q and AltGr+E read as `@` and `€` with no modifiers, in the console's
+records and in win32-input-mode, Windows Terminal releasing AltGr's right Alt
+without `ENHANCED_KEY` (read back as right Alt). An Alt code in Windows Terminal
+is text records and no Alt release (see the backlog).
 
-- **AltGr on a non-US layout**, and an Alt code typed on the keypad: the test
-  machine's input list has no layout with AltGr (see the backlog).
+Still to do: nothing measurable from here. IME input (the Japanese IME on the
+test machine) was not driven.

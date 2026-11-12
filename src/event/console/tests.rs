@@ -42,10 +42,118 @@ fn a_key_presses_repeats_and_releases() {
         .collect();
     use KeyEventKind::{Press, Release, Repeat};
     assert_eq!(kinds, [Press, Repeat, Repeat, Release, Press]);
-    let released = ConsoleKeys::default().key(&a(false)).unwrap();
+    let mut keys = ConsoleKeys::default();
+    keys.key(&a(true)).unwrap();
     assert_eq!(
-        released,
-        key(KeyCode::Char('a'), KeyModifiers::NONE).with_kind(Release)
+        keys.key(&a(false)),
+        Some(key(KeyCode::Char('a'), KeyModifiers::NONE).with_kind(Release))
+    );
+    // A release of a key not pressed since the records began is no event:
+    // Windows Terminal sends a paste shortcut's release without its press.
+    assert_eq!(keys.key(&a(false)), None);
+    assert_eq!(ConsoleKeys::default().key(&a(false)), None);
+    // Another key pressed in between does not lose `a`'s release.
+    let b = |down| record(0x42, unit('b'), down, 0);
+    let kinds: Vec<_> = [a(true), b(true), a(false), b(false)]
+        .iter()
+        .map(|r| keys.key(r).map(|event| (event.key, event.kind)))
+        .collect();
+    let (ka, kb) = (KeyCode::Char('a'), KeyCode::Char('b'));
+    assert_eq!(
+        kinds,
+        [
+            Some((ka, Press)),
+            Some((kb, Press)),
+            Some((ka, Release)),
+            Some((kb, Release))
+        ]
+    );
+}
+
+#[test]
+fn a_modifier_the_state_says_is_up_is_released() {
+    use KeyEventKind::{Press, Release};
+    use ModifierKeyCode::{LeftAlt, LeftControl, LeftSuper};
+    let mut keys = ConsoleKeys::default();
+    let mut events = |r: KeyRecord| -> Vec<_> {
+        keys.events(&r)
+            .map(|event| (event.key, event.kind))
+            .collect()
+    };
+    let modifier = |m| KeyCode::Modifier(m);
+    // As Windows Terminal sends an Alt code (measured): Alt's press, the
+    // character as text records, and no Alt release. The next key's state
+    // has no Alt, so Alt is released before it.
+    assert_eq!(
+        events(record(VK_MENU, 0, true, LEFT_ALT)),
+        [(modifier(LeftAlt), Press)]
+    );
+    assert_eq!(
+        events(record(VK_CONTROL, 0, true, LEFT_CTRL)),
+        [(modifier(LeftAlt), Release), (modifier(LeftControl), Press)]
+    );
+    // Its own release is not doubled, and a Windows key, which has no
+    // state bit, stays down.
+    assert_eq!(
+        events(record(VK_LWIN, 0, true, LEFT_CTRL)),
+        [(modifier(LeftSuper), Press)]
+    );
+    assert_eq!(
+        events(record(VK_CONTROL, 0, false, 0)),
+        [(modifier(LeftControl), Release)]
+    );
+    assert_eq!(
+        events(record(0x41, unit('a'), true, 0)),
+        [(KeyCode::Char('a'), Press)]
+    );
+}
+
+#[test]
+fn altgrs_right_alt_is_released_as_right_alt() {
+    use ModifierKeyCode::{LeftControl, RightAlt};
+    // As Windows Terminal sends AltGr+Q on a German layout (measured): left
+    // Ctrl and right Alt down, `@`, then the releases, right Alt's without
+    // ENHANCED_KEY.
+    let records = [
+        record(VK_CONTROL, 0, true, LEFT_CTRL),
+        record(
+            VK_MENU,
+            0,
+            true,
+            RIGHT_ALT_PRESSED | LEFT_CTRL | ENHANCED_KEY,
+        ),
+        record(0x51, unit('@'), true, RIGHT_ALT_PRESSED | LEFT_CTRL),
+        record(0x51, unit('@'), false, RIGHT_ALT_PRESSED | LEFT_CTRL),
+        record(VK_CONTROL, 0, false, RIGHT_ALT_PRESSED),
+        record(VK_MENU, 0, false, 0),
+    ];
+    let mut keys = ConsoleKeys::default();
+    let events: Vec<_> = records
+        .iter()
+        .filter_map(|r| keys.key(r))
+        .map(|event| (event.key, event.kind))
+        .collect();
+    use KeyEventKind::{Press, Release};
+    let at = KeyCode::Char('@');
+    assert_eq!(
+        events,
+        [
+            (KeyCode::Modifier(LeftControl), Press),
+            (KeyCode::Modifier(RightAlt), Press),
+            (at, Press),
+            (at, Release),
+            (KeyCode::Modifier(LeftControl), Release),
+            (KeyCode::Modifier(RightAlt), Release),
+        ]
+    );
+    // With left Alt down too, an unflagged release is left Alt's.
+    let mut keys = ConsoleKeys::default();
+    keys.key(&record(VK_MENU, 0, true, RIGHT_ALT_PRESSED | ENHANCED_KEY));
+    keys.key(&record(VK_MENU, 0, true, LEFT_ALT | RIGHT_ALT_PRESSED));
+    let released = keys.key(&record(VK_MENU, 0, false, RIGHT_ALT_PRESSED));
+    assert_eq!(
+        released.map(|event| event.key),
+        Some(KeyCode::Modifier(ModifierKeyCode::LeftAlt))
     );
 }
 
@@ -70,7 +178,12 @@ fn a_records_repeat_count_is_that_many_keys() {
         repeat: 3,
         ..record(VK_MENU, unit('é'), false, 0)
     };
-    // Its own release, then Alt's.
+    // Its own release; Alt's only where Alt was pressed.
+    assert_eq!(kinds(&mut keys, alt_code), [Press, Release]);
+    assert_eq!(
+        kinds(&mut keys, record(VK_MENU, 0, true, LEFT_ALT)),
+        [Press]
+    );
     assert_eq!(kinds(&mut keys, alt_code), [Press, Release, Release]);
 }
 

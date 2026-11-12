@@ -1358,8 +1358,9 @@ const CORPUS: &[&[u8]] = &[
 fn a_sequence_split_anywhere_reads_the_same() {
     let whole: Vec<u8> = CORPUS.concat();
     let expected = decode(&whole);
-    // "é😀" is two keys, and the Alt code a press, its release and Alt's.
-    assert_eq!(expected.len(), CORPUS.len() + 3, "{expected:?}");
+    // "é😀" is two keys, and the Alt code a press and its release (no
+    // record pressed Alt, so there is no Alt release).
+    assert_eq!(expected.len(), CORPUS.len() + 2, "{expected:?}");
     for split in 1..whole.len() {
         let mut decoder = Decoder::new();
         decoder.feed(&whole[..split]);
