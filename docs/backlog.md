@@ -54,14 +54,15 @@ as a decision, and the coverage that is still missing or cannot be tested.
   `Event`s between its client and server with it. A round trip needs a format
   crate as a dev-dependency (`serde_json` or the `postcard` tmxr uses), the
   owner's call.
-- **The reader's interrupt and failure paths are untested, and cannot be driven
+- **The Unix reader's interrupt paths are untested, and cannot be driven
   deterministically.** `EINTR` from `select` and from `read`, and the
   `Interrupted` arm of `drain` (`src/reader/unix.rs`), need a signal to land
-  inside that one system call; the Windows `WAIT_FAILED` and unexpected-result
-  arms of `Source::wait` (`src/reader/windows.rs`) need the wait itself to fail.
-  A test that raises a signal and hopes would pass whether or not the arm ran,
-  so none was written. A full wake pipe (`WouldBlock` in `WakeHandle::wake`) is
-  tested (`wakes_that_fill_the_pipe_are_one_event`).
+  inside that one system call. A test that raises a signal and hopes would pass
+  whether or not the arm ran, so none was written. A full wake pipe
+  (`WouldBlock` in `WakeHandle::wake`) is tested
+  (`wakes_that_fill_the_pipe_are_one_event`), and so are the Windows
+  `Source::wait` failure arms (`a_wait_that_fails_is_an_error`,
+  `an_unexpected_wait_result_is_an_error`).
 - **`AllocConsole` failed once in `without_a_console`**
   (`src/terminal/guard/tests/windows.rs`), on the first native Windows run
   (2026-11-13, `x86_64-pc-windows-msvc`, Windows 11 26300): 143 passed, and

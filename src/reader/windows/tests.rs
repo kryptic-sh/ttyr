@@ -325,3 +325,78 @@ fn a_character_shift_typed_is_read_on_the_layouts_key() {
     assert_eq!(event.shifted, Some('!'));
     assert_eq!(event.logical_char(), Some('!'));
 }
+
+/// `handle`, as the reader's wake event: the second handle it waits on.
+fn waking_on(reader: &mut Reader, handle: std::os::windows::io::OwnedHandle) {
+    reader.source.wake = std::sync::Arc::new(handle);
+}
+
+#[test]
+fn a_wait_that_fails_is_an_error() {
+    use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle};
+    use windows_sys::Win32::Foundation::{DuplicateHandle, ERROR_ACCESS_DENIED, HANDLE};
+    use windows_sys::Win32::System::Threading::{
+        CreateEventW, EVENT_MODIFY_STATE, GetCurrentProcess,
+    };
+    let _console = console();
+    let mut reader = Reader::open().unwrap();
+    // An event handle without SYNCHRONIZE access cannot be waited on, so
+    // WaitForMultipleObjects returns WAIT_FAILED.
+    // SAFETY: no security attributes or name; an auto-reset event.
+    let event = unsafe { CreateEventW(std::ptr::null(), 0, 0, std::ptr::null()) };
+    assert!(!event.is_null());
+    // SAFETY: a handle CreateEventW just returned, owned by nothing else.
+    let event = unsafe { OwnedHandle::from_raw_handle(event) };
+    let mut unwaitable: HANDLE = std::ptr::null_mut();
+    // SAFETY: both process handles are this process's pseudo handle, the
+    // source handle is open, and `unwaitable` is a valid out pointer.
+    let duplicated = unsafe {
+        DuplicateHandle(
+            GetCurrentProcess(),
+            event.as_raw_handle(),
+            GetCurrentProcess(),
+            &mut unwaitable,
+            EVENT_MODIFY_STATE,
+            0,
+            0,
+        )
+    };
+    assert_ne!(duplicated, 0, "{}", std::io::Error::last_os_error());
+    // SAFETY: a handle DuplicateHandle just returned, owned by nothing else.
+    waking_on(&mut reader, unsafe {
+        OwnedHandle::from_raw_handle(unwaitable)
+    });
+    let error = reader.poll(LONG).unwrap_err();
+    assert_eq!(
+        error.raw_os_error(),
+        Some(i32::try_from(ERROR_ACCESS_DENIED).unwrap()),
+        "{error}"
+    );
+}
+
+#[test]
+fn an_unexpected_wait_result_is_an_error() {
+    use std::os::windows::io::{FromRawHandle, OwnedHandle};
+    use windows_sys::Win32::System::Threading::CreateMutexW;
+    let _console = console();
+    let mut reader = Reader::open().unwrap();
+    // A mutex whose owning thread ended without releasing it: the wait
+    // returns WAIT_ABANDONED_0 + 1, which the reader never asks for.
+    let mutex = std::thread::spawn(|| {
+        // SAFETY: no security attributes or name; owned by this thread
+        // from the start.
+        let mutex = unsafe { CreateMutexW(std::ptr::null(), 1, std::ptr::null()) };
+        assert!(!mutex.is_null());
+        // SAFETY: a handle CreateMutexW just returned, owned by nothing
+        // else; handles are the process's, so it outlives the thread.
+        unsafe { OwnedHandle::from_raw_handle(mutex) }
+    })
+    .join()
+    .unwrap();
+    waking_on(&mut reader, mutex);
+    let error = reader.poll(LONG).unwrap_err();
+    assert!(
+        error.to_string().contains("unexpected wait result 0x81"),
+        "{error}"
+    );
+}
