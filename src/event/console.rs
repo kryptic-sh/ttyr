@@ -8,7 +8,7 @@
 //! release and repeat, Ctrl with Enter and Backspace, the keypad, and the
 //! back and forward mouse buttons.
 
-use super::key::{typed_char, typed_with_shift};
+use super::key::{single_lower, single_upper, typed_char, typed_with_shift};
 use super::{KeyCode, KeyEncoding, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
 use crate::event::MediaKeyCode;
 
@@ -108,6 +108,11 @@ const VK_OEM_5: u16 = 0xDC;
 const VK_OEM_6: u16 = 0xDD;
 const VK_OEM_7: u16 = 0xDE;
 
+/// The keyboard layout, as a lookup: the character a key types unshifted,
+/// by its virtual-key code, or `None` where the layout has none to give (a
+/// dead key, a key with no character).
+pub type Layout = fn(u16) -> Option<char>;
+
 /// Turns console key records into key events, keeping what spans records:
 /// the key held down (so a second down is a repeat) and the first half of a
 /// surrogate pair.
@@ -117,9 +122,33 @@ pub struct ConsoleKeys {
     held: Option<u16>,
     /// A high surrogate waiting for its low half.
     surrogate: Option<u16>,
+    /// The layout the records were typed on, where it can be read: only
+    /// the process at the keyboard can, so not for records that came from
+    /// another machine.
+    layout: Option<Layout>,
 }
 
 impl ConsoleKeys {
+    /// Reads records typed on `layout`: a character Shift typed is reported
+    /// on the key it was typed with, as kitty reports it (Shift+1 as `1`,
+    /// with `!` shifted), and Ctrl with a key the console gives no
+    /// character for is that key's character on the layout. Without one,
+    /// the character typed is the key, and Ctrl's key is the US layout's.
+    // Only the Windows reader has a layout to read; tested everywhere.
+    #[cfg(any(windows, test))]
+    pub fn with_layout(layout: Layout) -> Self {
+        Self {
+            layout: Some(layout),
+            ..Self::default()
+        }
+    }
+
+    /// The character `vk` types unshifted on the layout, lower case.
+    fn unshifted(&self, vk: u16) -> Option<char> {
+        let c = (self.layout?)(vk)?;
+        Some(single_lower(c).unwrap_or(c))
+    }
+
     /// The key events `record` is: [`ConsoleKeys::key`]'s, and after an Alt
     /// code's character its release. The console makes Alt codes itself for
     /// characters the keyboard layout lacks, pasted or sent by a terminal,
@@ -171,6 +200,9 @@ impl ConsoleKeys {
             Key::Code(code) => KeyEvent::new(code, modifiers),
             Key::Char(c) => typed_char(c, modifiers),
             Key::Typed(c) => typed_with_shift(c, modifiers),
+            Key::Shifted { key, typed } => {
+                KeyEvent::new(KeyCode::Char(key), modifiers).with_shifted(Some(typed))
+            }
         };
         // The record's own lock state, which `typed_char`'s guess at Caps
         // Lock gives way to.
@@ -239,9 +271,48 @@ impl ConsoleKeys {
     /// whose unit is a control code, the key that Ctrl was held with.
     fn typed_by(&mut self, record: &KeyRecord) -> Option<Key> {
         match record.unit {
-            0x00..=0x1F => control_key(record),
-            unit => self.typed(unit),
+            0x00..=0x1F => self.control_key(record),
+            unit => {
+                let typed = self.typed(unit)?;
+                Some(self.shifted(record, typed).unwrap_or(typed))
+            }
         }
+    }
+
+    /// A character Shift typed, as the key it was typed with, where the
+    /// layout names that key and it is not the character itself: Shift
+    /// went into it. Letters are left to [`typed_char`], and AltGr's
+    /// characters are not Shift's.
+    fn shifted(&self, record: &KeyRecord, typed: Key) -> Option<Key> {
+        let Key::Typed(typed) = typed else {
+            return None;
+        };
+        let shift = record.state & SHIFT_PRESSED != 0;
+        let letter = single_lower(typed).is_some() || single_upper(typed).is_some();
+        if !shift || letter || typed == ' ' || alt_gr_typed(record) {
+            return None;
+        }
+        let key = self.unshifted(record.vk).filter(|&key| key != typed)?;
+        Some(Key::Shifted { key, typed })
+    }
+
+    /// The key Ctrl was held with, where the console gives its control
+    /// code (`unit` below 0x20) or nothing: a letter or digit by its
+    /// virtual-key code, which names it on every layout; otherwise the
+    /// character whose control code it is (`0x1B` is Ctrl+\[); and with no
+    /// control code (Ctrl+; and the other OEM keys), the key's character on
+    /// the layout, or on a US layout where there is none to read.
+    fn control_key(&self, record: &KeyRecord) -> Option<Key> {
+        let c = match u8::try_from(record.vk).ok()? {
+            vk @ (b'A'..=b'Z' | b'0'..=b'9') => char::from(vk).to_ascii_lowercase(),
+            _ => match record.unit {
+                0 => self
+                    .unshifted(record.vk)
+                    .or_else(|| us_oem_char(record.vk))?,
+                unit => char::from(u8::try_from(unit).ok()? | 0x40).to_ascii_lowercase(),
+            },
+        };
+        Some(Key::Char(c))
     }
 
     /// The character `unit` completes: itself, or with the high surrogate
@@ -252,6 +323,7 @@ impl ConsoleKeys {
 }
 
 /// A key: by code, or by the character it typed.
+#[derive(Clone, Copy)]
 enum Key {
     Code(KeyCode),
     /// A character naming the key, Shift not in it: a letter or digit by
@@ -259,23 +331,12 @@ enum Key {
     Char(char),
     /// The character the key typed, Shift already in it.
     Typed(char),
-}
-
-/// The key Ctrl was held with, where the console gives its control code
-/// (`unit` below 0x20) or nothing: a letter or digit by its virtual-key
-/// code, which names it on every layout; otherwise the character whose
-/// control code it is (`0x1B` is Ctrl+\[); and with no control code (Ctrl+;
-/// and the other OEM keys), the key's character on a US layout, as the
-/// console gives none to read the layout's from.
-fn control_key(record: &KeyRecord) -> Option<Key> {
-    let c = match u8::try_from(record.vk).ok()? {
-        vk @ (b'A'..=b'Z' | b'0'..=b'9') => char::from(vk).to_ascii_lowercase(),
-        _ => match record.unit {
-            0 => us_oem_char(record.vk)?,
-            unit => char::from(u8::try_from(unit).ok()? | 0x40).to_ascii_lowercase(),
-        },
-    };
-    Some(Key::Char(c))
+    /// A character Shift typed (`typed`), and the key's own character on
+    /// the layout (`key`).
+    Shifted {
+        key: char,
+        typed: char,
+    },
 }
 
 /// The unshifted character of an OEM key on a US layout, as winuser.h

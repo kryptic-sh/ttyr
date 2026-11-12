@@ -70,6 +70,14 @@ impl Decoder {
         Self::default()
     }
 
+    /// Reads win32-input-mode's key records as typed on `layout` (see
+    /// [`ConsoleKeys::with_layout`]): only for a terminal at this
+    /// process's keyboard.
+    #[cfg(windows)]
+    pub(crate) fn set_console_layout(&mut self, layout: super::console::Layout) {
+        self.console = ConsoleKeys::with_layout(layout);
+    }
+
     /// Adds bytes read from the terminal.
     pub fn feed(&mut self, bytes: &[u8]) {
         if self.start == self.buf.len() {

@@ -19,12 +19,16 @@ use std::time::Duration;
 
 use windows_sys::Win32::Foundation::{WAIT_FAILED, WAIT_OBJECT_0, WAIT_TIMEOUT};
 use windows_sys::Win32::System::Console::{
-    ENABLE_VIRTUAL_TERMINAL_INPUT, FOCUS_EVENT, GetNumberOfConsoleInputEvents, INPUT_RECORD,
-    KEY_EVENT, MOUSE_EVENT, ReadConsoleInputW, WINDOW_BUFFER_SIZE_EVENT,
+    ENABLE_VIRTUAL_TERMINAL_INPUT, FOCUS_EVENT, GetConsoleWindow, GetNumberOfConsoleInputEvents,
+    INPUT_RECORD, KEY_EVENT, MOUSE_EVENT, ReadConsoleInputW, WINDOW_BUFFER_SIZE_EVENT,
 };
 use windows_sys::Win32::System::Threading::{
     CreateEventW, INFINITE, SetEvent, WaitForMultipleObjects,
 };
+use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
+    GetKeyboardLayout, MAPVK_VK_TO_CHAR, MapVirtualKeyExW,
+};
+use windows_sys::Win32::UI::WindowsAndMessaging::GetWindowThreadProcessId;
 
 use super::Queue;
 use crate::event::Event;
@@ -63,7 +67,7 @@ impl Source {
         Ok(Self {
             console: Console::open()?,
             wake: Arc::new(wake),
-            keys: ConsoleKeys::default(),
+            keys: ConsoleKeys::with_layout(layout_char),
             mouse: ConsoleMouse::default(),
             surrogate: None,
         })
@@ -220,6 +224,31 @@ impl Source {
         let text = String::from_utf16_lossy(&all);
         queue.feed(text.as_bytes());
     }
+}
+
+/// The character `vk` types unshifted on the console's keyboard layout:
+/// the layout of the console window's thread, which follows the user's
+/// switches, where the process has a console window; else this thread's.
+/// `None` for a dead key or a key with no character.
+pub fn layout_char(vk: u16) -> Option<char> {
+    // SAFETY: no arguments.
+    let window = unsafe { GetConsoleWindow() };
+    let thread = if window.is_null() {
+        0
+    } else {
+        // SAFETY: a window handle, which the call only reads; a null
+        // process id pointer is allowed.
+        unsafe { GetWindowThreadProcessId(window, std::ptr::null_mut()) }
+    };
+    // SAFETY: any thread id, or 0 for this one.
+    let layout = unsafe { GetKeyboardLayout(thread) };
+    // SAFETY: plain values in; the layout handle is only read.
+    let mapped = unsafe { MapVirtualKeyExW(u32::from(vk), MAPVK_VK_TO_CHAR, layout) };
+    // A dead key has the top bit set (winuser.h's MapVirtualKey docs).
+    if mapped & 0x8000_0000 != 0 {
+        return None;
+    }
+    char::from_u32(mapped).filter(|&c| c != ' ')
 }
 
 /// The waker's side: the event the reader waits on.

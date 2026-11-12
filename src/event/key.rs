@@ -345,7 +345,7 @@ impl KeyChord {
 }
 
 /// `c`'s upper case, where it is one character and differs from `c`.
-fn single_upper(c: char) -> Option<char> {
+pub(super) fn single_upper(c: char) -> Option<char> {
     let mut upper = c.to_uppercase();
     let u = upper.next()?;
     (upper.next().is_none() && u != c).then_some(u)

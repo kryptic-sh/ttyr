@@ -116,7 +116,10 @@ impl Reader {
     #[cfg(windows)]
     pub fn open() -> io::Result<Self> {
         let claim = Claim::take()?;
-        Ok(Self::new(sys::Source::open()?, claim))
+        let mut reader = Self::new(sys::Source::open()?, claim);
+        // win32-input-mode's records are typed at this console's keyboard.
+        reader.queue.decoder.set_console_layout(sys::layout_char);
+        Ok(reader)
     }
 
     /// A reader of `tty`, which should be a terminal: [`Event::Resize`] and

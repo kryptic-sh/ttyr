@@ -283,3 +283,33 @@ fn the_reader_and_waker_can_move_between_threads() {
     send::<Reader>();
     send_sync::<crate::reader::Waker>();
 }
+
+#[test]
+fn the_layout_is_read_from_the_system() {
+    use super::layout_char;
+    // Space is a space on every layout; Shift types nothing.
+    assert_eq!(layout_char(0x20), Some(' '));
+    assert_eq!(layout_char(0x10), None);
+    // Each letter key types something, whatever the script.
+    for vk in 0x41..=0x5A {
+        assert!(layout_char(vk).is_some(), "{vk:#x}");
+    }
+}
+
+#[test]
+fn a_character_shift_typed_is_read_on_the_layouts_key() {
+    let _console = console();
+    let mut reader = Reader::open().unwrap();
+    // Shift+1 (VK 0x31, Shift is 0x10 in wincon.h) typing `!`.
+    inject(&[key(0x31, u16::from(b'!'), true, 0x10)]);
+    let Event::Key(event) = reader.read().unwrap() else {
+        panic!("not a key");
+    };
+    // The key is whatever the machine's layout has unshifted there (`1` on
+    // a US layout), unless that is `!` itself.
+    let unshifted = super::layout_char(0x31).filter(|&c| c != '!');
+    let expected = unshifted.map_or('!', |c| c.to_lowercase().next().unwrap());
+    assert_eq!(event.key, KeyCode::Char(expected));
+    assert_eq!(event.shifted, Some('!'));
+    assert_eq!(event.logical_char(), Some('!'));
+}

@@ -6,6 +6,22 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- Windows: a character Shift typed is reported on the key it was typed with,
+  read from the keyboard layout, as kitty's flags 1 and 4 report it: Shift+1 is
+  `Char('1')` with `!` in `shifted` and Shift in the modifiers, where it was
+  `Char('!')`. Alt+Shift+1 is `1` with Alt and Shift, so a program re-encoding
+  it for kitty has the key kitty itself sends (`CSI 49;4u`). `chord()` and
+  `logical_char` are unchanged (`!`). This covers the console's records and
+  win32-input-mode read by `Reader`; `Decoder` on its own has no layout and
+  keeps the character typed, as do letters, Space and AltGr's characters.
+- Windows: Ctrl with an OEM key the console gives no character for (Ctrl+; and
+  the rest) is that key's character on the keyboard layout (`ü` on a German
+  layout), where it was always the US layout's. A dead key, or a reader with no
+  layout, keeps the US character; Ctrl with a key that has a control code
+  (Ctrl+\[, Ctrl+-) is unchanged.
+
 ## [0.2.0] - 2026-11-11
 
 ### Breaking

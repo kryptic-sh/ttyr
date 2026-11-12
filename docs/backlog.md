@@ -163,13 +163,14 @@ as a decision, and the coverage that is still missing or cannot be tested.
   as in crossterm, where kitty reports them with flag 8. A consumer that wants
   them gets a `KeyCode::Modifier` mapping (left and right from the scan code or
   `ENHANCED_KEY`).
-- **Ctrl with a non-letter key reads the control code**, not the layout: on a
-  layout where `[` is not where VK_OEM_4 sits, Ctrl+that key still reads as
-  Ctrl+\[ when the console gives 0x1B. Reading the layout needs `ToUnicodeEx`
-  (crossterm's way), Windows-only. Where the console gives no control code at
-  all (Ctrl+; and the other OEM keys), `us_oem_char` in `src/event/console.rs`
-  names the key by its US character, so on another layout it is the US key at
-  that place.
+- **Ctrl with a non-letter key that has a control code reads the control code**,
+  not the layout: on a layout where `[` is not where VK_OEM_4 sits, Ctrl+that
+  key still reads as Ctrl+\[ when the console gives 0x1B. Kept on purpose:
+  tmxr's client maps Ctrl+- and Ctrl+Shift+2/6/- by these events
+  (`ConsoleBytes`), and hjkl binds `<C-]>` and the like by character. Where the
+  console gives no control code (Ctrl+; and the other OEM keys) the key is read
+  from the layout (`layout_char` in `src/reader/windows.rs`), falling back to
+  `us_oem_char` for a dead key or a `Decoder` with no layout.
 - **win32-input-mode's repeat count (`Rc`) is not read.** Windows Terminal sends
   a held key as more records, which read as repeats.
 
