@@ -7,7 +7,6 @@ rust-version = "1.95"
 license = "MIT"
 description = "Terminal input, output and raw mode for Rust, with the full kitty keyboard protocol and a ratatui backend"
 repository = "https://github.com/kryptic-sh/ttyr"
-homepage = "https://github.com/kryptic-sh/ttyr"
 readme = "README.md"
 keywords = ["terminal", "tty", "kitty", "keyboard", "tui"]
 categories = ["command-line-interface"]
