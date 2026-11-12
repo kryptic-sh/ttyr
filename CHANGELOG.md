@@ -22,6 +22,14 @@ All notable changes to this project are documented here. The format follows
   layout, keeps the US character; Ctrl with a key that has a control code
   (Ctrl+\[, Ctrl+-) is unchanged.
 
+### Fixed
+
+- A bracketed paste with win32-input-mode on (`Mode::Win32Input`) no longer
+  carries raw key records in its text: ConPTY sends a pasted line break as
+  Enter's records (`CSI 13 ; 28 ; 13 ; 1 ; 0 ; 1 _` and its release), which
+  `Event::Paste` now holds as the character they typed (`\r`), a release as
+  nothing.
+
 ## [0.2.0] - 2026-11-11
 
 ### Breaking

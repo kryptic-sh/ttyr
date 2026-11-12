@@ -214,10 +214,50 @@ impl Decoder {
             return None;
         };
         let end = paste.scanned + end;
-        let text = String::from_utf8_lossy(&text[..end]).into_owned();
+        let text = paste_text(&text[..end]);
         self.start += paste.marker + end + PASTE_END.len();
         self.paste = None;
         Some(Event::Paste(text))
+    }
+}
+
+/// A paste's text, with the key records win32-input-mode wraps keys in
+/// put back as the characters they typed: a key down's character, and
+/// nothing for a release. ConPTY sends a pasted line break so, as Enter's
+/// records, when the program asked for win32-input-mode.
+fn paste_text(bytes: &[u8]) -> String {
+    let input = Input {
+        at_end: true,
+        kitty: false,
+    };
+    let mut text = Vec::with_capacity(bytes.len());
+    let mut units = Vec::new();
+    let mut i = 0;
+    while i < bytes.len() {
+        let rest = &bytes[i..];
+        if rest.len() > 2
+            && rest.starts_with(b"\x1B[")
+            && let Parsed::ConsoleKey(record, len) = csi::parse(rest, input)
+        {
+            if record.down && record.unit != 0 {
+                units.push(record.unit);
+            }
+            i += len;
+            continue;
+        }
+        push_units(&mut text, &mut units);
+        text.push(bytes[i]);
+        i += 1;
+    }
+    push_units(&mut text, &mut units);
+    String::from_utf8_lossy(&text).into_owned()
+}
+
+/// Appends the UTF-16 `units` to `text` as UTF-8, emptying them.
+fn push_units(text: &mut Vec<u8>, units: &mut Vec<u16>) {
+    if !units.is_empty() {
+        text.extend_from_slice(String::from_utf16_lossy(units).as_bytes());
+        units.clear();
     }
 }
 

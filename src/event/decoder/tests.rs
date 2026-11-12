@@ -1099,6 +1099,26 @@ fn focus_and_paste() {
 }
 
 #[test]
+fn win32_input_modes_records_in_a_paste_are_their_characters() {
+    // As ConPTY sends a paste of "hi\nEND" with win32-input-mode on: the
+    // line break as Enter's press and release.
+    assert_eq!(
+        one(b"\x1B[200~hi\x1B[13;28;13;1;0;1_\x1B[13;28;13;0;0;1_END\x1B[201~"),
+        Event::Paste("hi\rEND".into())
+    );
+    // A surrogate pair over two records, and a record with no character.
+    assert_eq!(
+        one(b"\x1B[200~\x1B[0;0;55357;1;0;1_\x1B[0;0;56832;1;0;1_\x1B[16;42;0;1;16;1_\x1B[201~"),
+        Event::Paste("\u{1F600}".into())
+    );
+    // Other sequences in a paste are left as they are.
+    assert_eq!(
+        one(b"\x1B[200~a\x1B[Ab\x1B[201~"),
+        Event::Paste("a\x1B[Ab".into())
+    );
+}
+
+#[test]
 fn paste_across_reads_waits_for_its_end() {
     // Flushed anywhere after its start marker, the paste is held whole.
     let paste = b"\x1B[200~one\x1B[20two\x1B[201~x";
