@@ -6,6 +6,14 @@ What is not done yet, and why.
   crossterm, and Windows on a real machine, planned in `docs/plan/`.
 - **Consumers not surveyed**: gpur, pikr, sqeel, hodl and the other ratatui
   apps' use of crossterm (01's Consumers lists tmxr's and hjkl's).
+- **The Windows work under `[Unreleased]` waits on the owner's call to
+  release.** It changes what existing keys produce on Windows (Shift+symbol as
+  its key with the character shifted, lone modifier and lock keys as events, an
+  Alt code's closing Alt release), so the proposal is 0.3.0, not a patch. tmxr
+  (pins ttyr 0.2 from crates.io) takes it after running its Windows suite
+  against it; hjkl waits on it to turn on `Mode::VirtualTerminalInput` and
+  `Mode::Win32Input` with bracketed paste. Both asked to be told the version
+  once it is on crates.io.
 
 ## Left from the 0.1.0 review
 
