@@ -62,11 +62,13 @@ as a decision, and the coverage that is still missing or cannot be tested.
   A test that raises a signal and hopes would pass whether or not the arm ran,
   so none was written. A full wake pipe (`WouldBlock` in `WakeHandle::wake`) is
   tested (`wakes_that_fill_the_pipe_are_one_event`).
-- **The Windows tests run only in CI**: they compile for `x86_64-pc-windows-gnu`
-  locally. Those added after the 0.1.0 review passed on windows-latest (run
-  42962300827); the standard-handle restore in `without_a_console`
-  (`src/terminal/guard/tests/windows.rs`), added after that run, has not run
-  yet.
+- **`AllocConsole` failed once in `without_a_console`**
+  (`src/terminal/guard/tests/windows.rs`), on the first native Windows run
+  (2026-11-13, `x86_64-pc-windows-msvc`, Windows 11 26300): 143 passed, and
+  `a_console_that_fails_still_writes_the_off_sequences_on_restore` failed at the
+  assert after `AllocConsole`. 28 runs after it passed, the standard-handle
+  restore included. The asserts now print the OS error; keep it if it happens
+  again.
 
 ## Left from phase 02 (events and decoder)
 

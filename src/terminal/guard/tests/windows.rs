@@ -184,10 +184,17 @@ fn without_a_console<T>(f: impl FnOnce() -> T) -> T {
     // SAFETY: each is a standard device; the handles are only read.
     let saved = streams.map(|stream| unsafe { GetStdHandle(stream) });
     // SAFETY: no arguments; the tests that use the console hold its lock.
-    assert_ne!(unsafe { FreeConsole() }, 0);
+    let freed = unsafe { FreeConsole() };
+    assert_ne!(freed, 0, "FreeConsole: {}", std::io::Error::last_os_error());
     let result = f();
     // SAFETY: no arguments.
-    assert_ne!(unsafe { AllocConsole() }, 0);
+    let allocated = unsafe { AllocConsole() };
+    assert_ne!(
+        allocated,
+        0,
+        "AllocConsole: {}",
+        std::io::Error::last_os_error()
+    );
     for (stream, handle) in streams.into_iter().zip(saved) {
         // SAFETY: `handle` is the value this stream had before; setting it
         // only records it. (A pipe, as cargo gives the tests, outlives the
