@@ -148,23 +148,25 @@ as a decision, and the coverage that is still missing or cannot be tested.
 
 ## Phase 07 in progress (Windows)
 
-- **Not run by hand at a keyboard yet.** Measured on Windows 11 26300
-  (2026-11-13) with a scratch reader driven without a person: conhost started
-  directly (`conhost.exe probe`), and the system ConPTY with tmxr 0.15 as the
-  outer terminal (`tmxr send-keys`, `paste-buffer -p`). What that showed is
-  recorded in the entries below and in `docs/plan/07-windows.md`. Still to do
-  with someone at the keyboard, in Windows Terminal: a paste with
-  `Mode::VirtualTerminalInput`, `Mode::Win32Input` and `Mode::BracketedPaste`
-  (hjkl's planned modes; through tmxr's ConPTY it is one `Event::Paste`), AltGr
-  characters on a non-US layout, whether kitty flags do anything (tmxr answered
-  them in the run above, not Windows Terminal), and focus records in conhost
-  when the window loses and regains focus.
+- **AltGr on a non-US layout is not measured.** The keystroke runs (see
+  `docs/plan/07-windows.md`) could not switch Windows Terminal to a German
+  layout: Windows only switches a window to a layout in the user's input list,
+  which on the test machine holds US and the Japanese IME. Measuring it needs a
+  layout with AltGr added to the list for the run (Settings, a change to the
+  account's settings, so the owner's call) or a person on such a keyboard.
+  `alt_gr_typed` (`src/event/console.rs`) is tested only on hand-written
+  records. An Alt code typed on the keypad, and IME input, were not driven
+  either.
+- **Windows Terminal swallows a paste shortcut's press but not its release**:
+  with `Mode::Win32Input` on, Ctrl+Shift+V reads as Ctrl's and Shift's presses,
+  then the paste, then a release of `v` that had no press (measured). A program
+  that pairs presses with releases sees one release unpaired.
 - **Focus records are read only with VT input off**, as crossterm reads them,
   although Microsoft documents `FOCUS_EVENT` as the console's internal. With VT
   input on they are dropped, so focus is reported once, by the terminal under
-  mode 1004. conhost sends one gained record when the program starts, in both
-  input modes (measured); its records when the window loses and regains focus
-  were not measured.
+  mode 1004. conhost sends a gained record when the program starts, in both
+  input modes, and lost and gained records when its window loses and regains
+  focus (measured with VT input off).
 - **A key record with no virtual-key and no scan code is text**
   (`KeyRecord::is_text`), read as a terminal's bytes, in win32-input-mode and in
   the console's records. Measured: conhost writes its own DA1 answer

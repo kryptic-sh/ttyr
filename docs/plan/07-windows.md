@@ -32,10 +32,19 @@ keys from `tmxr send-keys` and pastes from `paste-buffer -p`.
   arrive kitty-encoded (the outer terminal, tmxr, implements kitty).
 - conhost reports its font size, so pixels; ConPTY reports none.
 
+Then with keystrokes from `SendInput`, which go through the keyboard layout and
+the terminal's own key handling as a keyboard's do (Windows Terminal from
+`wt.exe -w new`, US layout):
+
+- Windows Terminal: a two-line paste is one `Event::Paste("hi\rEND")` with VT
+  input and bracketed paste, and the same with win32-input-mode on as well.
+- Windows Terminal does not answer a kitty flags query, and its keys stay in the
+  legacy encoding with kitty flag 1 pushed (Ctrl+I reads as Tab). Only
+  win32-input-mode tells such keys apart there.
+- conhost: real keystrokes arrive as console records, lone modifiers included,
+  and its window losing and regaining focus gives `FocusLost` and `FocusGained`.
+
 Still to do:
 
-- **Run it by hand in Windows Terminal**: a paste with
-  `Mode::VirtualTerminalInput`, `Mode::Win32Input` and `Mode::BracketedPaste`
-  (hjkl's planned modes), AltGr characters on a non-US layout, whether kitty
-  flags do anything in Windows Terminal itself, and an Alt code typed on the
-  keypad. In conhost: focus records when the window loses and regains focus.
+- **AltGr on a non-US layout**, and an Alt code typed on the keypad: the test
+  machine's input list has no layout with AltGr (see the backlog).
